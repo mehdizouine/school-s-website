@@ -102,7 +102,7 @@ $conn->close();
     <div class="hero-content display-table">
       <div class="table-cell">
         <div class="container">
-          <h1 class="hero-title mb-4">[school's name</h1>
+          <h1 class="hero-title mb-4">[school's nam</h1>
           <p class="hero-subtitle"><span class="typed" data-typed-items="Welcome <?php echo htmlspecialchars($_SESSION['username']); ?> !"></span></p>
         </div>
       </div>
@@ -212,7 +212,7 @@ $conn->close();
   <footer>
     <div class="container">
       <div class="copyright-box">
-        <p class="copyright">&copy; Copyright <strong>[school's name]</strong> 2024-2025</p>
+        <p class="copyright">&copy; Copyright <strong>[school's name]</strong> 2025-2026</p>
         <div class="credits">All Rights Reserved</div>
       </div>
     </div>      
