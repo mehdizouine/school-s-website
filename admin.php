@@ -4,13 +4,11 @@ include("db.php");
 $success = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Sanitize inputs
+    
     $name = htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8');
     $email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES, 'UTF-8');
     $subject = htmlspecialchars($_POST['subject'] ?? '', ENT_QUOTES, 'UTF-8');
     $message = htmlspecialchars($_POST['message'] ?? '', ENT_QUOTES, 'UTF-8');
-
-    // Prepare and insert into 'message_us' table
     $stmt = $conn->prepare("INSERT INTO message_us (name, email, subject, message) VALUES (?, ?, ?, ?)");
     $stmt->bind_param("ssss", $name, $email, $subject, $message);
 
@@ -286,7 +284,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
 
  <script>
-// Advanced Teal Glass Morphism Contact Form with Signature Colors
+
 document.addEventListener('DOMContentLoaded', function() {
     const contactSection = document.querySelector('#contact');
     const formInputs = document.querySelectorAll('#contact input.form-control, #contact textarea.form-control');
@@ -297,7 +295,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const socialIcons = document.querySelectorAll('#contact .socials .ico-circle');
     const textElements = document.querySelectorAll('#contact .more-info p, #contact .list-ico li');
 
-    // Add floating animation keyframes with teal glows
+    //  message us float design cool
     const style = document.createElement('style');
     style.textContent = `
         @keyframes float {
@@ -367,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     document.head.appendChild(style);
 
-    // Enhanced glass effect for main container with teal gradient
+    // message us glass effect fjfj
     if (contactBox) {
         contactBox.style.cssText = `
             background: linear-gradient(135deg, 
@@ -393,11 +391,11 @@ document.addEventListener('DOMContentLoaded', function() {
             transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
         `;
         
-        // Add teal shimmer effect
+        // teal coloure send messages
         contactBox.classList.add('glass-shimmer-teal');
         contactBox.style.position = 'relative';
         
-        // Enhanced hover effect with teal glow
+        // si je passe dessus 
         contactBox.addEventListener('mouseenter', function() {
             this.style.transform = 'scale(1.02) rotateX(2deg)';
             this.style.boxShadow = `
@@ -422,7 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Enhanced glass effect for form inputs with teal accents
+    // inputs hover 
     formInputs.forEach((input, index) => {
         input.style.cssText = `
             background: rgba(255, 255, 255, 0.15) !important;
@@ -442,10 +440,10 @@ document.addEventListener('DOMContentLoaded', function() {
             overflow: hidden !important;
         `;
         
-        // Style placeholders with teal
+        // dans input styles
         input.style.setProperty('--placeholder-color', 'rgba(27, 209, 194, 0.7)');
         
-        // Add staggered entrance animation
+        // Add staggered entrance animation :after a duree
         setTimeout(() => {
             input.style.opacity = '1';
             input.style.transform = 'translateY(0)';
@@ -454,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
         input.style.opacity = '0';
         input.style.transform = 'translateY(20px)';
         
-        // Enhanced focus effects with teal glow
+        // Enhanced focus effects with teal glow focus
         input.addEventListener('focus', function() {
             this.style.cssText += `
                 background: rgba(255, 255, 255, 0.2) !important;
