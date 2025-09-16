@@ -174,7 +174,8 @@ $conn->close();
     <div class="container">
       <div class="copyright-box">
         <p class="copyright">&copy; Copyright <strong>[school's name]</strong> 2025-2026</p>
-        <div class="credits">All Rights Resd</div>
+        <div class="credits">All Rights 00
+        </div>
       </div>
     </div>      
   </footer>
