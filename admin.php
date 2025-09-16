@@ -173,7 +173,7 @@ $conn->close();
   <footer>
     <div class="container">
       <div class="copyright-box">
-        <p class="copyright">&copy; Copyright <strong>[school's name]</strong> 2024-2025</p>
+        <p class="copyright">&copy; Copyright <strong>[school's name]</strong> 2025-2026</p>
         <div class="credits">All Rights Reserved</div>
       </div>
     </div>      
