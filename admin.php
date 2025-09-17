@@ -74,8 +74,8 @@ $conn->close();
             <div class="box-shadow-full" style="border-radius: 25px; max-height: 124vh;">
               <div class="row">
                 <div class="containera">
-                  <div class="diha">
-                  <ul>
+                  <div class="menu-glass-container">
+                  <ul class="">
                     <li><button onclick="changerSite('Profil.php')">Profil</button></li>
                     <li><button onclick="changerSite('modif_note.php')">modif_note</button></li>
                     <li><button onclick="changerSite('slider.php')">News</button></li>
@@ -189,95 +189,192 @@ function changerSite(url){
 </script>
  <script>
 document.addEventListener("DOMContentLoaded", function() {
-  const style = document.createElement("style");
-  style.innerHTML = `
-:root {
-  --primary-color: rgba(14, 119, 112, 0.8);
-  --primary-dark: rgba(14, 119, 112, 1);
-  --primary-light: rgba(14, 119, 112, 0.3);
-  --primary-gradient: linear-gradient(135deg, rgba(14,119,112,0.95) 0%, rgba(27,209,194,0.7) 100%);
-  --secondary-gradient: linear-gradient(135deg, #0e7770 0%, #1bd1c2 100%);
+    console.log("✅ Animation float responsive pour menu-glass-container chargée");
 
-  /* Glass-specific variables */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.3);
-  --backdrop-blur: blur(14px);
-  --glass-box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    const style = document.createElement("style");
+    style.innerHTML = `
+        /* Animation de flottement — version desktop */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            25%     { transform: translateY(5px) rotate(2deg); }
+            50%     { transform: translateY(-5px) rotate(0deg); }
+            75%     { transform: translateY(5px) rotate(-2deg); }
+        }
 
-  --border-radius-md: 20px;
-  --transition-smooth: all 0.4s ease;
-  --transition-elastic: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
+        /* Animation de flottement — version mobile (plus douce, moins de mouvement) */
+        @keyframes float-mobile {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            25%     { transform: translateY(2px) rotate(1deg); }
+            50%     { transform: translateY(-2px) rotate(0deg); }
+            75%     { transform: translateY(2px) rotate(-1deg); }
+        }
 
-.diha {
-  /* Applying glassmorphism using variables for consistency */
-  background: var(--glass-bg);
-  backdrop-filter: var(--backdrop-blur) saturate(160%);
-  -webkit-backdrop-filter: var(--backdrop-blur) saturate(160%);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-box-shadow);
+        .menu-glass-container {
+            background: linear-gradient(135deg, 
+                rgba(27, 209, 194, 0.2) 0%,
+                rgba(27, 209, 194, 0.2) 25%,
+                rgba(27, 209, 194, 0.3) 50%,
+                rgba(27, 209, 194, 0.4) 75%,
+                rgba(27, 209, 194, 0.5) 100%
+            );
+            backdrop-filter: blur(20px) saturate(200%);
+            -webkit-backdrop-filter: blur(20px) saturate(200%);
+            border: 1px solid rgba(27, 209, 194, 0.3);
+            border-radius: 20px;
+            padding: 15px 20px;
+            box-shadow: 
+                0 8px 32px rgba(27, 209, 194, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: box-shadow 0.3s ease, border-color 0.3s ease;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: visible;
+            z-index: 10;
+            animation: float 4s ease-in-out infinite;
+            will-change: transform;
+        }
 
-  /* Preserving original layout and spacing */
-  padding: 12px 20px;
-  border-radius: 16px;
-  margin: 20px auto;
-  max-width: 100%;
-}
+        .menu-glass-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(27, 209, 194, 0.1), transparent);
+            animation: shimmerTeal 3s infinite;
+            z-index: 1;
+        }
 
-.diha ul {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  flex-wrap: nowrap;
-}
+        @keyframes shimmerTeal {
+            0% { transform: translateX(-100%); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
 
-.diha li {
-  flex: 0 0 auto;
-}
+        .menu-glass {
+            display: flex;
+            gap: 20px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            flex-wrap: wrap; /* 👈 Permet de passer à la ligne sur petit écran */
+            justify-content: center; /* 👈 Centre les éléments si wrap */
+            position: relative;
+            z-index: 2;
+        }
 
-.diha button {
-  padding: 10px 20px;
-  border: none !important;
-  border-radius: 12px !important;
+        .menu-glass button {
+            background: linear-gradient(135deg, 
+                rgba(14, 119, 112, 0.95) 0%, 
+                rgba(27, 209, 194, 0.7) 100%
+            );
+            border: none;
+            border-radius: 50px;
+            padding: 12px 24px;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 6px 18px rgba(14, 119, 112, 0.25);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap; /* Évite que le texte se coupe */
+        }
 
-  /* Glassy button background using original colors */
-  background: linear-gradient(
-    135deg,
-    rgba(224, 247, 250, 0.4),
-    rgba(178, 235, 242, 0.35)
-  ) !important;
-  color: #004d40 !important; /* dark teal text for readability */
-  font-size: 15px !important;
-  font-weight: 600 !important;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-}
+        .menu-glass button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.4s ease;
+        }
 
-.diha button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(224, 247, 250, 0.6),
-    rgba(178, 235, 242, 0.5)
-  ) !important;
-  transform: translateY(-3px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
-}
+        .menu-glass button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
 
-.diha button:active {
-  transform: translateY(0);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
-}
-  `;
-  document.head.appendChild(style);
+        .menu-glass button:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 15px 35px rgba(27, 209, 194, 0.4);
+        }
+
+        .menu-glass button:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* 📱 Responsive : Mobile First */
+        @media (max-width: 768px) {
+            .menu-glass-container {
+                padding: 12px 15px;
+                border-radius: 16px;
+                /* 👇 Animation plus douce sur mobile */
+                animation: float-mobile 5s ease-in-out infinite;
+            }
+
+            .menu-glass {
+                gap: 12px; /* Réduit l’espace entre boutons */
+                flex-wrap: wrap; /* Permet de passer à la ligne */
+                justify-content: center;
+            }
+
+            .menu-glass button {
+                padding: 10px 18px;
+                font-size: 13px;
+                /* Optionnel : réduit légèrement l’effet hover sur mobile */
+                transform: none !important;
+            }
+
+            /* Optionnel : désactive l’animation hover sur mobile tactile */
+            @media (hover: none) {
+                .menu-glass button:hover {
+                    transform: none !important;
+                    box-shadow: 0 6px 18px rgba(14, 119, 112, 0.25);
+                }
+            }
+        }
+
+        /* 📱 Très petit écran (mobile portrait étroit) */
+        @media (max-width: 480px) {
+            .menu-glass-container {
+                padding: 10px;
+                border-radius: 14px;
+            }
+
+            .menu-glass {
+                gap: 8px;
+            }
+
+            .menu-glass button {
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Hover interactions (desktop only recommended)
+    document.querySelectorAll('.menu-glass button').forEach(button => {
+        button.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-3px) scale(1.05)';
+        });
+        button.addEventListener('mouseleave', function() {
+            this.style.transform = '';
+        });
+    });
 });
 </script>
 
