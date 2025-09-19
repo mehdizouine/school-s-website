@@ -736,7 +736,7 @@ document.addEventListener("DOMContentLoaded", function() {
     <div class="hero-content display-table">
       <div class="table-cell">
         <div class="container">
-          <h1 class="hero-title mb-4">[school's nam</h1>
+          <h1 class="hero-title mb-4">[school's name]</h1>
           <p class="hero-subtitle"><span class="typed" data-typed-items="Welcome <?php echo htmlspecialchars($_SESSION['username']); ?> !"></span></p>
         </div>
       </div>
@@ -757,7 +757,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             <li><button onclick="changerSite('Profil.php')">Profil</button></li>
                             <li><button onclick="changerSite('modif_note.php')">modif_note</button></li>    
                             <li><button onclick="changerSite('slider.php')">News</button></li>                     
-                            <li><button onclick="changerSite('modif_profiel.php')">modif.prof</button></li>                     
+                            <li><button onclick="changerSite('modif_profiel.php')">modif_profile</button></li>                     
                             <li><button onclick="changerSite('modif_user.php')">Users</button></li>                     
                             <li><button onclick="changerSite('modif_news.php')">modif.news</button></li>
                       </ul>
