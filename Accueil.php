@@ -758,6 +758,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         <li><button onclick="changerSite('Marks.php')">MARKS</button></li>
                         <li><button onclick="changerSite('Homeworks.html')">HOMEWORKS</button></li>
                         <li><button onclick="changerSite('slider.php')">NEWS</button></li>
+                        <li><button onclick="changerSite('edt.php')">EDT</button></li>
                       </ul>
                     </div>
                    
