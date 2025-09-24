@@ -26,20 +26,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 
             // Password check (cast to int for now, adjust if using hashed passwords)
             if ($password === $user['Password']) {
+                // Définir le rôle
+                $role = $user['role'];  // <-- ajoute cette ligne
 
                 // Set session variables
                 $_SESSION['user_id'] = $user['ID'];
                 $_SESSION['username'] = $user['Username'];
-                $_SESSION['role'] = $user['role'];
+                $_SESSION['role'] = $role;
 
                 // Redirect based on role
-                if ($user['role'] === 'admin') {
+                if ($role == 'eleve') {
+                    header("Location: Accueil.php");
+                    exit();
+                } else if ($role == 'prof') {
+                    header("Location: prof.php");
+                    exit();
+                } else if ($role == 'admin') {
                     header("Location: admin.php");
                     exit();
-                } else {
-                    header("Location: accueil.php");
-                    exit();
                 }
+            
 
             } else {
                 $message_ip = "<br>❌ Invalid password";

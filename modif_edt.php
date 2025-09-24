@@ -7,6 +7,7 @@ if (isset($_POST['save_creneau'])) {
     $id = $_POST['id'] ?? '';
     $classe_id = $_POST['classe_id'];
     $matiere_id = $_POST['matiere_id'];
+    $prof_id = $_POST['prof_id'] ?? null;
     $jour = $_POST['jour'];
     $heure_debut = $_POST['heure_debut'];
     $heure_fin = $_POST['heure_fin'];
@@ -26,17 +27,24 @@ if (isset($_POST['save_creneau'])) {
     $matiere_check->fetch();
     $matiere_check->close();
 
-    if (!$classe_exists || !$matiere_exists) {
-        $error = "Erreur : Classe ou matière invalide.";
+    $prof_check = $conn->prepare("SELECT COUNT(*) FROM login WHERE ID=? AND role='prof'");
+    $prof_check->bind_param("i", $prof_id);
+    $prof_check->execute();
+    $prof_check->bind_result($prof_exists);
+    $prof_check->fetch();
+    $prof_check->close();
+
+    if (!$classe_exists || !$matiere_exists || ($prof_id && !$prof_exists)) {
+        $error = "Erreur : Classe, matière ou prof invalide.";
     } elseif ($heure_debut >= $heure_fin) {
         $error = "Erreur : l’heure de début doit être avant l’heure de fin.";
     } else {
         if ($id) { // Modifier
-            $stmt = $conn->prepare("UPDATE emploi_du_temps SET classe_id=?, matiere_id=?, jour=?, heure_debut=?, heure_fin=? WHERE id=?");
-            $stmt->bind_param("iisssi", $classe_id, $matiere_id, $jour, $heure_debut, $heure_fin, $id);
+            $stmt = $conn->prepare("UPDATE emploi_du_temps SET classe_id=?, matiere_id=?, prof_id=?, jour=?, heure_debut=?, heure_fin=? WHERE id=?");
+            $stmt->bind_param("iiisssi", $classe_id, $matiere_id, $prof_id, $jour, $heure_debut, $heure_fin, $id);
         } else { // Ajouter
-            $stmt = $conn->prepare("INSERT INTO emploi_du_temps (classe_id, matiere_id, jour, heure_debut, heure_fin) VALUES (?, ?, ?, ?, ?)");
-            $stmt->bind_param("iisss", $classe_id, $matiere_id, $jour, $heure_debut, $heure_fin);
+            $stmt = $conn->prepare("INSERT INTO emploi_du_temps (classe_id, matiere_id, prof_id, jour, heure_debut, heure_fin) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("iiisss", $classe_id, $matiere_id, $prof_id, $jour, $heure_debut, $heure_fin);
         }
         $stmt->execute();
         $stmt->close();
@@ -56,16 +64,18 @@ if (isset($_GET['delete'])) {
     exit;
 }
 
-// Récupérer toutes les classes et matières
+// Récupérer toutes les classes, matières et profs
 $classes = $conn->query("SELECT * FROM classes ORDER BY nom_de_classe ASC");
 $matieres = $conn->query("SELECT * FROM matiere ORDER BY matiere ASC");
+$profs = $conn->query("SELECT ID, Username FROM login WHERE role='prof' ORDER BY Username ASC");
 
 // Récupérer tous les créneaux
 $edt_result = $conn->query("
-    SELECT e.*, c.nom_de_classe, m.matiere 
+    SELECT e.*, c.nom_de_classe, m.matiere, p.Username AS prof_name
     FROM emploi_du_temps e
     JOIN classes c ON e.classe_id=c.ID
     JOIN matiere m ON e.matiere_id=m.ID_matiere
+    LEFT JOIN login p ON e.prof_id=p.ID
     ORDER BY FIELD(e.jour,'Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'), e.heure_debut
 ");
 ?>
@@ -78,8 +88,141 @@ $edt_result = $conn->query("
     <title>Gestion Emploi du Temps</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
+</head>
+<body>
+<div class="container py-5">
+    <div class="card p-4 mb-4 shadow-lg">
+        <h3><i class="bi bi-calendar-week me-3"></i> Gestion Emploi du Temps</h3>
+
+        <?php if (!empty($error)): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <!-- Formulaire d'ajout/modification -->
+        <form method="POST" class="row g-3 mb-4">
+            <input type="hidden" name="id" id="id">
+
+            <div class="col-md-2">
+                <select name="classe_id" id="classe_id" class="form-select" required>
+                    <option value="">-- Classe --</option>
+                    <?php $classes->data_seek(0); while ($c = $classes->fetch_assoc()): ?>
+                        <option value="<?= $c['ID'] ?>"><?= htmlspecialchars($c['nom_de_classe']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <select name="matiere_id" id="matiere_id" class="form-select" required>
+                    <option value="">-- Matière --</option>
+                    <?php $matieres->data_seek(0); while ($m = $matieres->fetch_assoc()): ?>
+                        <option value="<?= $m['ID_matiere'] ?>"><?= htmlspecialchars($m['matiere']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <select name="prof_id" id="prof_id" class="form-select">
+                    <option value="">-- Prof --</option>
+                    <?php $profs->data_seek(0); while ($p = $profs->fetch_assoc()): ?>
+                        <option value="<?= $p['ID'] ?>"><?= htmlspecialchars($p['Username']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <select name="jour" id="jour" class="form-select" required>
+                    <option value="">-- Jour --</option>
+                    <option value="Lundi">Lundi</option>
+                    <option value="Mardi">Mardi</option>
+                    <option value="Mercredi">Mercredi</option>
+                    <option value="Jeudi">Jeudi</option>
+                    <option value="Vendredi">Vendredi</option>
+                    <option value="Samedi">Samedi</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <input type="time" name="heure_debut" id="heure_debut" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+                <input type="time" name="heure_fin" id="heure_fin" class="form-control" required>
+            </div>
+
+            <div class="col-12 text-end">
+                <button type="submit" name="save_creneau" class="btn btn-success">
+                    <i class="bi bi-save me-2"></i>Enregistrer
+                </button>
+            </div>
+        </form>
+
+        <!-- Liste des créneaux -->
+        <div class="table-responsive">
+            <table class="table table-hover text-center align-middle">
+                <thead class="table-primary">
+                    <tr>
+                        <th>ID</th>
+                        <th>Classe</th>
+                        <th>Matière</th>
+                        <th>Prof</th>
+                        <th>Jour</th>
+                        <th>Début</th>
+                        <th>Fin</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php while ($row = $edt_result->fetch_assoc()): ?>
+                    <tr>
+                        <td><?= $row['id'] ?></td>
+                        <td><?= htmlspecialchars($row['nom_de_classe']) ?></td>
+                        <td><?= htmlspecialchars($row['matiere']) ?></td>
+                        <td><?= htmlspecialchars($row['prof_name'] ?? '-') ?></td>
+                        <td><?= $row['jour'] ?></td>
+                        <td><?= $row['heure_debut'] ?></td>
+                        <td><?= $row['heure_fin'] ?></td>
+                        <td>
+                            <button class="btn btn-warning btn-sm"
+                                onclick="editCreneau(
+                                    <?= $row['id'] ?>,
+                                    <?= $row['classe_id'] ?>,
+                                    <?= $row['matiere_id'] ?>,
+                                    <?= $row['prof_id'] ?? 'null' ?>,
+                                    '<?= addslashes($row['jour']) ?>',
+                                    '<?= $row['heure_debut'] ?>',
+                                    '<?= $row['heure_fin'] ?>'
+                                )">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <a href="modif_edt.php?delete=<?= $row['id'] ?>" class="btn btn-danger btn-sm"
+                               onclick="return confirm('Supprimer ce créneau ?')">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                <?php endwhile; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function editCreneau(id, classe_id, matiere_id, prof_id, jour, heure_debut, heure_fin) {
+    document.getElementById('id').value = id;
+    document.getElementById('classe_id').value = classe_id;
+    document.getElementById('matiere_id').value = matiere_id;
+    document.getElementById('prof_id').value = prof_id ?? '';
+    document.getElementById('jour').value = jour;
+    document.getElementById('heure_debut').value = heure_debut;
+    document.getElementById('heure_fin').value = heure_fin;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
+<style>
         /* === Identique au style de edt.txt === */
         :root {
             --primary-color: rgba(14, 119, 112, 0.8);
@@ -274,117 +417,3 @@ $edt_result = $conn->query("
         }
     </style>
 </head>
-<body>
-    <div class="container py-5">
-        <div class="card fade-in">
-            <h3><i class="bi bi-calendar-week me-3"></i> Gestion Emploi du Temps</h3>
-
-            <?php if (!empty($error)): ?>
-                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-            <?php endif; ?>
-
-            <!-- Formulaire d'ajout/modification -->
-            <form method="POST" class="row g-3 mb-4">
-                <input type="hidden" name="id" id="id">
-                <div class="col-md-3">
-                    <select name="classe_id" id="classe_id" class="form-select" required>
-                        <option value="">-- Choisir classe --</option>
-                        <?php 
-                        $classes->data_seek(0);
-                        while ($c = $classes->fetch_assoc()): ?>
-                            <option value="<?= $c['ID'] ?>"><?= htmlspecialchars($c['nom_de_classe']) ?></option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <select name="matiere_id" id="matiere_id" class="form-select" required>
-                        <option value="">-- Choisir matière --</option>
-                        <?php 
-                        $matieres->data_seek(0);
-                        while ($m = $matieres->fetch_assoc()): ?>
-                            <option value="<?= $m['ID_matiere'] ?>"><?= htmlspecialchars($m['matiere']) ?></option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <select name="jour" id="jour" class="form-select" required>
-                        <option value="">-- Jour --</option>
-                        <option value="Lundi">Lundi</option>
-                        <option value="Mardi">Mardi</option>
-                        <option value="Mercredi">Mercredi</option>
-                        <option value="Jeudi">Jeudi</option>
-                        <option value="Vendredi">Vendredi</option>
-                        <option value="Samedi">Samedi</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <input type="time" name="heure_debut" id="heure_debut" class="form-control" required>
-                </div>
-                <div class="col-md-2">
-                    <input type="time" name="heure_fin" id="heure_fin" class="form-control" required>
-                </div>
-                <div class="col-12 text-end">
-                    <button type="submit" name="save_creneau" class="btn btn-success">
-                        <i class="bi bi-save me-2"></i>Enregistrer
-                    </button>
-                </div>
-            </form>
-
-            <!-- Liste des créneaux -->
-            <div class="card" style="padding: 25px;">
-                <h4 class="mb-3"><i class="bi bi-list-check me-2"></i>Liste des Créneaux</h4>
-                <div class="table-responsive">
-                    <table class="table table-hover text-center align-middle">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Classe</th>
-                                <th>Matière</th>
-                                <th>Jour</th>
-                                <th>Heure Début</th>
-                                <th>Heure Fin</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php while ($row = $edt_result->fetch_assoc()): ?>
-                                <tr>
-                                    <td><?= $row['id'] ?></td>
-                                    <td><?= htmlspecialchars($row['nom_de_classe']) ?></td>
-                                    <td><span class="course"><?= htmlspecialchars($row['matiere']) ?></span></td>
-                                    <td><?= $row['jour'] ?></td>
-                                    <td><?= $row['heure_debut'] ?></td>
-                                    <td><?= $row['heure_fin'] ?></td>
-                                    <td>
-                                        <button class="btn btn-warning btn-sm"
-                                            onclick="editCreneau(<?= $row['id'] ?>,<?= $row['classe_id'] ?>,<?= $row['matiere_id'] ?>,'<?= addslashes($row['jour']) ?>','<?= $row['heure_debut'] ?>','<?= $row['heure_fin'] ?>')">
-                                            <i class="bi bi-pencil-square"></i>
-                                        </button>
-                                        <a href="modif_edt.php?delete=<?= $row['id'] ?>" 
-                                           class="btn btn-danger btn-sm" 
-                                           onclick="return confirm('Supprimer ce créneau ?')">
-                                            <i class="bi bi-trash"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                            <?php endwhile; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function editCreneau(id, classe_id, matiere_id, jour, heure_debut, heure_fin) {
-            document.getElementById('id').value = id;
-            document.getElementById('classe_id').value = classe_id;
-            document.getElementById('matiere_id').value = matiere_id;
-            document.getElementById('jour').value = jour;
-            document.getElementById('heure_debut').value = heure_debut;
-            document.getElementById('heure_fin').value = heure_fin;
-        }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>

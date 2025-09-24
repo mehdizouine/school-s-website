@@ -699,26 +699,38 @@ if($classe_ID > 0){
                                 <?php
                                 $jours = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
                                 $slots = ['08:30-10:30','10:30-12:30','13:30-15:30','15:30-17:30'];
-                                
+
                                 foreach($jours as $jour){
                                     echo "<tr><td><i class='bi bi-chevron-right me-2'></i>$jour</td>";
                                     foreach($slots as $slot){
-                                        $found = false;
+                                        $cell_content = "";
+                                        list($slot_debut, $slot_fin) = explode('-', $slot);
+
                                         foreach($edt_par_classe as $c){
-                                            // Ignorer les secondes pour la comparaison
-                                            $h = substr($c['heure_debut'],0,5) . '-' . substr($c['heure_fin'],0,5);
-                                            if($c['jour'] == $jour && $h == $slot){
-                                                echo "<td><div class='course'><i class='bi bi-book me-1'></i>".htmlspecialchars($c['matiere'])."</div></td>";
-                                                $found = true;
-                                                break;
+                                            if($c['jour'] == $jour){
+                                                $cours_debut = substr($c['heure_debut'],0,5);
+                                                $cours_fin = substr($c['heure_fin'],0,5);
+
+                                                // Vérifier si le cours chevauche le slot
+                                                if($cours_debut < $slot_fin && $cours_fin > $slot_debut){
+                                                    $prof = $c['prof_id'] ?? ''; // ajoute cette colonne si tu veux afficher le prof
+                                                    $cell_content .= "<div class='course'>
+                                                        <i class='bi bi-book me-1'></i>"
+                                                        .htmlspecialchars($c['matiere'])."<br>
+                                                        <small>$cours_debut-$cours_fin</small>";
+                                                    if($prof) $cell_content .= "<br><small>Prof: ".htmlspecialchars($prof)."</small>";
+                                                    $cell_content .= "</div>";
+                                                }
                                             }
                                         }
-                                        if(!$found) echo "<td></td>";
+
+                                        echo "<td>".($cell_content ?: "")."</td>";
                                     }
                                     echo "</tr>";
                                 }
                                 ?>
-                            </tbody>
+                                </tbody>
+
                         </table>
                     </div>
                 </div>

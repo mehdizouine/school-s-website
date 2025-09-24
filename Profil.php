@@ -1,36 +1,63 @@
-<?php 
+<?php
 session_start();
 include('db.php');
 
-// Fetch user profile information
-$user_id = $_SESSION['user_id']; // Retrieve user ID from session
-$sql = "SELECT p.ID , p.Photo, p.Prénom, p.Nom, p.Email, p.Date_de_naissance, p.Année_scolaire, p.Classe 
-        FROM profil p
-        JOIN login l ON p.ID = l.ID
-        WHERE l.ID = ?";
+$user_id = $_SESSION['user_id']; // int depuis login
 
+// --- 1) Récupérer les infos générales depuis profil ---
+$sql = "SELECT p.Photo, p.Prénom, p.Nom, p.Email, p.Date_de_naissance, p.Année_scolaire
+        FROM profil p
+        WHERE p.ID = ?";
 $stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
+$stmt->bind_param("s", $user_id); // profil.ID est varchar
 $stmt->execute();
 $result = $stmt->get_result();
 
-// Check if the profile exists
+// Vérifier si le profil existe
 if ($result->num_rows > 0) {
     $row = $result->fetch_assoc();
     $photo = $row['Photo'];
-    // Décoder les entités HTML pour afficher correctement les apostrophes
     $prenom = html_entity_decode($row['Prénom'], ENT_QUOTES);
     $nom = html_entity_decode($row['Nom'], ENT_QUOTES);
     $email = html_entity_decode($row['Email'], ENT_QUOTES);
     $dob = html_entity_decode($row['Date_de_naissance'], ENT_QUOTES);
     $schoolYear = html_entity_decode($row['Année_scolaire'], ENT_QUOTES);
-    $class = html_entity_decode($row['Classe'], ENT_QUOTES);
 } else {
     echo "No profile data found!";
     exit();
 }
-
 $stmt->close();
+
+// --- 2) Récupérer le rôle et la/les classes depuis login/prof_classes ---
+$stmt = $conn->prepare("SELECT role, classe_id FROM login WHERE ID = ?");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$user = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if ($user['role'] === 'prof') {
+    // Prof → plusieurs classes
+    $q = $conn->prepare("SELECT c.nom_de_classe 
+                         FROM prof_classes pc
+                         JOIN classes c ON pc.classe_id = c.ID
+                         WHERE pc.prof_id = ?");
+    $q->bind_param("i", $user_id);
+    $q->execute();
+    $res = $q->get_result();
+    $classes = [];
+    while ($c = $res->fetch_assoc()) $classes[] = $c['nom_de_classe'];
+    $class_display = implode(", ", $classes);
+    $q->close();
+} else {
+    // Élève/Admin → classe unique depuis login.classe_id
+    $q = $conn->prepare("SELECT nom_de_classe FROM classes WHERE ID = ?");
+    $q->bind_param("i", $user['classe_id']);
+    $q->execute();
+    $res = $q->get_result();
+    $class_display = ($res->num_rows > 0) ? $res->fetch_assoc()['nom_de_classe'] : '-';
+    $q->close();
+}
+
 $conn->close();
 ?>
 
@@ -39,6 +66,53 @@ $conn->close();
 <head>
     <link rel="icon" href="assets/img/alwah logo.png">
     <title>Profil</title>
+</head>
+<body>
+    <div class="profile-container">
+        <h2>Mon Profil</h2>
+        <div class="profile-pic">
+            <?php
+                if (!empty($photo)) {
+                    echo '<img src="' . htmlspecialchars($photo) . '" alt="Profil Image">';
+                } else {
+                    echo '<img src="assets/img/default-profile.png" alt="Default Profile Image">';
+                }
+            ?>
+        </div>
+        <form id="profileForm" action="Profil.php" method="post">
+            <div class="Part1">
+                <div class="input-group">
+                    <label for="firstName">Prénom</label>
+                    <input type="text" id="firstName" disabled value="<?php echo $prenom; ?>">
+                </div>
+                <div class="input-group">
+                    <label for="lastName">Nom</label>
+                    <input type="text" id="lastName" disabled value="<?php echo $nom; ?>">
+                </div>
+                <div class="input-group">
+                    <label for="class">Classe</label>
+                    <input type="text" id="class" disabled value="<?php echo $class_display; ?>">
+                </div>
+            </div>
+            <div class="Part2">
+                <div class="input-group">
+                    <label for="dob">Date de naissance</label>
+                    <input type="text" id="dob" disabled value="<?php echo $dob; ?>">
+                </div>
+                <div class="input-group">
+                    <label for="schoolYear">Année scolaire</label>
+                    <input type="text" id="schoolYear" disabled value="<?php echo $schoolYear; ?>">
+                </div>
+                <div class="input-group">
+                    <label for="Email">Email</label>
+                    <input type="text" id="Email" disabled value="<?php echo $email; ?>">
+                </div>
+            </div>
+        </form>
+    </div>
+</body>
+</html>
+
     <style>
 /* Enhanced Profile Display System CSS - Teal Theme with Light Colors */
 
@@ -604,49 +678,3 @@ input:focus {
     }
 }
     </style>
-</head>
-<body>
-    <div class="profile-container">
-        <h2>Mon Profil</h2>
-        <div class="profile-pic">
-            <?php
-                if (!empty($photo)) {
-                    echo '<img src="' . htmlspecialchars($photo) . '" alt="Profil Image">';
-                } else {
-                    echo '<img src="assets/img/default-profile.png" alt="Default Profile Image">';
-                }
-            ?>
-        </div>
-        <form id="profileForm" action="Profil.php" method="post">
-            <div class="Part1">
-                <div class="input-group">
-                    <label for="firstName">Prénom</label>
-                    <input type="text" id="firstName" disabled value="<?php echo $prenom; ?>">
-                </div>
-                <div class="input-group">
-                    <label for="lastName">Nom</label>
-                    <input type="text" id="lastName" disabled value="<?php echo $nom; ?>">
-                </div>
-                <div class="input-group">
-                    <label for="class">Classe</label>
-                    <input type="text" id="class" disabled value="<?php echo $class; ?>">
-                </div>
-            </div>
-            <div class="Part2">
-                <div class="input-group">
-                    <label for="dob">Date de naissance</label>
-                    <input type="text" id="dob" disabled value="<?php echo $dob; ?>">
-                </div>
-                <div class="input-group">
-                    <label for="schoolYear">Année scolaire</label>
-                    <input type="text" id="schoolYear" disabled value="<?php echo $schoolYear; ?>">
-                </div>
-                <div class="input-group">
-                    <label for="Email">Email</label>
-                    <input type="text" id="Email" disabled value="<?php echo $email; ?>">
-                </div>
-            </div>
-        </form>
-    </div>
-</body>
-</html>
