@@ -760,6 +760,9 @@ document.addEventListener("DOMContentLoaded", function() {
                             <li><button onclick="changerSite('modif_profiel.php')">modif_profile</button></li>                     
                             <li><button onclick="changerSite('modif_user.php')">Users</button></li>                     
                             <li><button onclick="changerSite('modif_news.php')">modif.news</button></li>
+                            <li><button onclick="changerSite('modif_class.php')">modif.class</button></li>
+                            <li><button onclick="changerSite('edt.php')">edt</button></li>
+                            <li><button onclick="changerSite('modif_edt.php')">modif_edt</button></li>
                       </ul>
                     </div>
                    
