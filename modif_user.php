@@ -8,17 +8,18 @@ if (isset($_POST['save_user'])) {
     $username = $_POST['username'];
     $password = $_POST['password'];
     $role = $_POST['role'];
+    $classe_id = $_POST['classe_id'] ?? null;
 
     if ($id) {
         // Update user
-        $sql = "UPDATE login SET Username=?, Password=?, role=? WHERE ID=?";
+        $sql = "UPDATE login SET Username=?, Password=?, role=?, classe_id=? WHERE ID=?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssi", $username, $password, $role, $id);
+        $stmt->bind_param("sssii", $username, $password, $role, $classe_id, $id);
     } else {
         // Add user
-        $sql = "INSERT INTO login (Username, Password, role) VALUES (?, ?, ?)";
+        $sql = "INSERT INTO login (Username, Password, role, classe_id) VALUES (?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sss", $username, $password, $role);
+        $stmt->bind_param("sssi", $username, $password, $role, $classe_id);
     }
     $stmt->execute();
     $stmt->close();
@@ -39,6 +40,13 @@ if (isset($_GET['delete'])) {
 
 // Récupérer tous les utilisateurs
 $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
+
+// Récupérer toutes les classes pour le select
+$classesList = $conn->query("SELECT * FROM classes ORDER BY nom_de_classe ASC");
+$classes = [];
+while($c = $classesList->fetch_assoc()){
+    $classes[$c['ID']] = $c['nom_de_classe'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -59,18 +67,26 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
         <form method="POST" class="row g-3">
             <input type="hidden" name="id" id="id">
 
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <input type="text" name="username" id="username" class="form-control" placeholder="Nom d’utilisateur" required>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <input type="text" name="password" id="password" class="form-control" placeholder="Mot de passe" required>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <select name="role" id="role" class="form-select" required>
                     <option value="">Choisir rôle</option>
                     <option value="eleve">Élève</option>
                     <option value="admin">Admin</option>
                     <option value="prof">Prof</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select name="classe_id" id="classe_id" class="form-select">
+                    <option value="">-- Choisir classe --</option>
+                    <?php foreach($classes as $id => $nom): ?>
+                        <option value="<?= $id ?>"><?= htmlspecialchars($nom) ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="col-md-1 d-grid">
@@ -92,6 +108,7 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
                         <th>Nom d’utilisateur</th>
                         <th>Mot de passe</th>
                         <th>Rôle</th>
+                        <th>Classe</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -102,9 +119,14 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
                         <td><?= htmlspecialchars($row['Username']) ?></td>
                         <td><?= htmlspecialchars($row['Password']) ?></td>
                         <td><span class="badge bg-info"><?= htmlspecialchars($row['role']) ?></span></td>
+                        <td><?= $classes[$row['classe_id']] ?? '-' ?></td>
                         <td>
                             <button class="btn btn-warning btn-sm" 
-                                    onclick="editUser(<?= $row['ID'] ?>,'<?= addslashes($row['Username']) ?>','<?= addslashes($row['Password']) ?>','<?= addslashes($row['role']) ?>')">
+                                    onclick="editUser(<?= $row['ID'] ?>,
+                                                     '<?= addslashes($row['Username']) ?>',
+                                                     '<?= addslashes($row['Password']) ?>',
+                                                     '<?= addslashes($row['role']) ?>',
+                                                     '<?= $row['classe_id'] ?>')">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
                             <a href="modif_user.php?delete=<?= $row['ID'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer cet utilisateur ?')">
@@ -118,6 +140,20 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
         </div>
     </div>
 </div>
+
+<script>
+function editUser(id, username, password, role, classe_id){
+    document.getElementById('id').value = id;
+    document.getElementById('username').value = username;
+    document.getElementById('password').value = password;
+    document.getElementById('role').value = role;
+    document.getElementById('classe_id').value = classe_id;
+}
+</script>
+
+</body>
+</html>
+
 
 <script>
 function editUser(id, username, password, role) {
