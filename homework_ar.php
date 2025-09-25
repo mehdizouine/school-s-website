@@ -2,55 +2,32 @@
 session_start();
 include('db.php');
 
-// Vérifier si le prof est connecté
 if (!isset($_SESSION['user_id'])) {
     die("Accès refusé : vous devez vous connecter.");
 }
 
-$prof_id = $_SESSION['user_id'];
+$eleve_id = $_SESSION['user_id'];
 
-// Récupérer les classes associées au prof
-$prof_classes_res = $conn->prepare("SELECT classe_id FROM prof_classes WHERE prof_id = ?");
-$prof_classes_res->bind_param("i", $prof_id);
-$prof_classes_res->execute();
-$prof_classes_result = $prof_classes_res->get_result();
+// Récupérer la classe de l'élève depuis login
+$res = $conn->prepare("SELECT classe_id FROM login WHERE ID = ?");
+$res->bind_param("i", $eleve_id);
+$res->execute();
+$result = $res->get_result();
+$row = $result->fetch_assoc();
+$classe_id = $row['classe_id'];
 
-$classes_ids = [];
-while($c = $prof_classes_result->fetch_assoc()){
-    $classes_ids[] = $c['classe_id'];
-}
-$prof_classes_res->close();
-
-// Jours et horaires fixes
-$jours = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-$heures = ['08:30-10:30','10:30-12:30','13:30-15:30','15:30-17:30'];
-
-// EDT du prof
-$edt = [];
-
-if(count($classes_ids) > 0){
-    $ids = implode(',', $classes_ids);
-
-    $sql = "
-        SELECT e.*, c.nom_de_classe, m.matiere
-        FROM emploi_du_temps e
-        JOIN classes c ON e.classe_id = c.ID
-        JOIN matiere m ON e.matiere_id = m.ID_matiere
-        WHERE e.classe_id IN ($ids) AND e.prof_id = $prof_id
-        ORDER BY FIELD(e.jour,'Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'), e.heure_debut
-    ";
-    $edt_result = $conn->query($sql);
-
-    while($row = $edt_result->fetch_assoc()){
-        // Parcourir toutes les plages horaires et ajouter le cours à toutes celles concernées
-        foreach($heures as $h){
-            list($debut,$fin) = explode('-',$h);
-            if(strtotime($row['heure_debut']) < strtotime($fin) && strtotime($row['heure_fin']) > strtotime($debut)){
-                $edt[$row['jour']][$h][] = $row['matiere'] . " (" . $row['nom_de_classe'] . ")";
-            }
-        }
-    }
-}
+// Récupérer les devoirs pour cette classe
+$homework_res = $conn->prepare("
+    SELECT d.id, d.titre, d.description, d.date_limite, d.fichier, c.nom_de_classe, m.matiere
+    FROM devoirs d
+    JOIN classes c ON d.classe_id = c.ID
+    JOIN matiere m ON d.matiere_id = m.ID_matiere
+    WHERE d.classe_id = ?
+    ORDER BY d.date_limite ASC
+");
+$homework_res->bind_param("i", $classe_id);
+$homework_res->execute();
+$homework_result = $homework_res->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -58,70 +35,10 @@ if(count($classes_ids) > 0){
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon Emploi du Temps - Professeur</title>
+    <title>Mes Devoirs</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container py-5 fade-in">
-        <div class="card">
-            <h2>
-                <i class="fas fa-chalkboard-teacher professor-icon"></i>
-                Mon Emploi du Temps
-            </h2>
-
-            <?php if(count($classes_ids) === 0): ?>
-                <div class="alert alert-warning">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    Vous n'êtes associé à aucune classe pour le moment.
-                </div>
-            <?php else: ?>
-                <div class="schedule-container">
-                    <div class="table-responsive">
-                        <table class="table text-center">
-                            <thead>
-                                <tr>
-                                    <th><i class="bi bi-calendar-day me-2"></i>Jour / Heure</th>
-                                    <?php foreach($heures as $h): ?>
-                                        <th><i class="bi bi-clock me-2"></i><?= $h ?></th>
-                                    <?php endforeach; ?>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach($jours as $jour): ?>
-                                    <tr>
-                                        <td><i class="bi bi-chevron-right me-2"></i><b><?= $jour ?></b></td>
-                                        <?php foreach($heures as $h): ?>
-                                            <td>
-                                                <?php
-                                                if(!empty($edt[$jour][$h])){
-                                                    foreach($edt[$jour][$h] as $c){
-                                                        echo "<span class='course-card'>
-                                                            <i class='bi bi-book me-1'></i>" . htmlspecialchars($c) . "
-                                                        </span>";
-                                                    }
-                                                } else {
-                                                    echo "<span class='empty-cell'>—</span>";
-                                                }
-                                                ?>
-                                            </td>
-                                        <?php endforeach; ?>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
-
-</html>
     <style>
         /* Sophisticated School Management System CSS - Teal Theme */
         :root {
@@ -133,6 +50,7 @@ if(count($classes_ids) > 0){
             --success-gradient: linear-gradient(135deg, rgba(129, 199, 132, 0.9) 0%, rgba(200, 230, 201, 0.8) 100%);
             --warning-gradient: linear-gradient(135deg, #ffe082 0%, #ffcc80 100%);
             --danger-gradient: linear-gradient(135deg, #ef9a9a 0%, #ffcdd2 100%);
+            --info-gradient: linear-gradient(135deg, rgba(33, 150, 243, 0.9) 0%, rgba(144, 202, 249, 0.8) 100%);
             
             --glass-bg: rgba(255, 255, 255, 0.65);
             --glass-border: rgba(255, 255, 255, 0.3);
@@ -285,6 +203,7 @@ if(count($classes_ids) > 0){
             overflow: hidden;
             color: #856404;
             font-weight: 500;
+            text-align: center;
         }
 
         .alert::before {
@@ -301,8 +220,8 @@ if(count($classes_ids) > 0){
             border-left: 4px solid #ffc107;
         }
 
-        /* Enhanced Table Styling */
-        .schedule-container {
+        /* Enhanced Table Container */
+        .homework-container {
             background: linear-gradient(135deg, rgba(226, 250, 248, 0.4), rgba(255, 255, 255, 0.6));
             backdrop-filter: blur(15px);
             -webkit-backdrop-filter: blur(15px);
@@ -314,6 +233,7 @@ if(count($classes_ids) > 0){
             margin-top: 20px;
         }
 
+        /* Enhanced Table Styling */
         .table {
             width: 100%;
             border-collapse: separate;
@@ -383,61 +303,97 @@ if(count($classes_ids) > 0){
             transition: all 0.3s ease;
         }
 
-        /* Day column styling */
-        .table tbody td:first-child {
-            font-weight: 700;
-            color: var(--primary-dark);
-            text-align: center;
+        /* Enhanced Class Cell */
+        .class-cell {
             background: rgba(14, 119, 112, 0.08);
-            border-radius: 10px;
-            margin: 4px;
+            color: var(--primary-dark);
+            font-weight: 700;
+            text-align: center;
+            border-radius: var(--border-radius-sm);
             text-transform: uppercase;
             letter-spacing: 1px;
-            position: relative;
+            font-size: 0.85rem;
         }
 
-        .table tbody td:first-child::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, rgba(14, 119, 112, 0.1), rgba(27, 209, 194, 0.1));
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            z-index: -1;
-            transition: all 0.3s ease;
-        }
-
-        .table tbody tr:hover td:first-child::before {
-            width: 45px;
-            height: 45px;
-            background: linear-gradient(135deg, rgba(14, 119, 112, 0.2), rgba(27, 209, 194, 0.2));
-        }
-
-        /* Course card styling avec effets avancés */
-        .course-card {
-            background: linear-gradient(135deg, rgba(14, 119, 112, 0.9), rgba(27, 209, 194, 0.8));
-            color: white;
-            border-radius: var(--border-radius-sm);
-            padding: 12px 8px;
+        /* Enhanced Subject Cell */
+        .subject-cell {
+            background: linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(144, 202, 249, 0.1));
+            color: #1976d2;
             font-weight: 600;
             text-align: center;
-            margin: 4px;
-            box-shadow: 0 4px 15px rgba(14, 119, 112, 0.3);
-            transition: all 0.3s ease;
+            border-radius: var(--border-radius-sm);
             text-transform: uppercase;
             letter-spacing: 0.5px;
             font-size: 0.85rem;
-            position: relative;
-            overflow: hidden;
-            cursor: pointer;
-            display: block;
-            border: none;
         }
 
-        .course-card::before {
+        /* Enhanced Title Cell */
+        .title-cell {
+            font-weight: 700;
+            color: var(--primary-dark);
+            font-size: 1rem;
+        }
+
+        /* Enhanced Description Cell */
+        .description-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: relative;
+        }
+
+        /* Enhanced Date Cell */
+        .date-cell {
+            font-weight: 600;
+            text-align: center;
+            color: #e65100;
+            background: rgba(255, 152, 0, 0.1);
+            border-radius: var(--border-radius-sm);
+            font-size: 0.9rem;
+        }
+
+        /* Date urgence indicators */
+        .date-urgent {
+            background: rgba(244, 67, 54, 0.15) !important;
+            color: #c62828 !important;
+            animation: pulse 2s infinite;
+        }
+
+        .date-soon {
+            background: rgba(255, 152, 0, 0.15) !important;
+            color: #f57c00 !important;
+        }
+
+        .date-normal {
+            background: rgba(76, 175, 80, 0.15) !important;
+            color: #388e3c !important;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+        }
+
+        /* Enhanced Download Link */
+        .download-link {
+            background: var(--success-gradient);
+            color: white;
+            padding: 8px 16px;
+            border-radius: var(--border-radius-sm);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: var(--transition-smooth);
+            display: inline-block;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .download-link::before {
             content: '';
             position: absolute;
             top: 0;
@@ -448,38 +404,30 @@ if(count($classes_ids) > 0){
             transition: var(--transition-smooth);
         }
 
-        .course-card:hover {
-            transform: translateY(-3px) scale(1.05);
-            box-shadow: 0 8px 25px rgba(14, 119, 112, 0.5);
-            background: linear-gradient(135deg, rgba(14, 119, 112, 1), rgba(27, 209, 194, 0.9));
+        .download-link:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.5);
+            text-decoration: none;
+            color: white;
         }
 
-        .course-card:hover::before {
+        .download-link:hover::before {
             left: 100%;
         }
 
         /* Empty cell styling */
-        .table tbody td:empty {
-            background: rgba(255, 255, 255, 0.05);
-            position: relative;
-        }
-
-        .table tbody td:empty::after {
-            content: '—';
-            color: rgba(14, 119, 112, 0.3);
-            font-size: 1.5rem;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-weight: 300;
-        }
-
-        /* Style pour les cellules avec tiret */
         .empty-cell {
             color: rgba(14, 119, 112, 0.3);
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             font-weight: 300;
+            text-align: center;
+        }
+
+        /* Icon pour la fiche élève */
+        .student-icon {
+            display: inline-block;
+            margin-right: 10px;
+            color: var(--primary-color);
         }
 
         /* Animation for page load */
@@ -521,13 +469,8 @@ if(count($classes_ids) > 0){
         .table tbody tr:nth-child(4) { animation-delay: 0.4s; }
         .table tbody tr:nth-child(5) { animation-delay: 0.5s; }
         .table tbody tr:nth-child(6) { animation-delay: 0.6s; }
-
-        /* Icon pour la fiche professeur */
-        .professor-icon {
-            display: inline-block;
-            margin-right: 10px;
-            color: var(--primary-color);
-        }
+        .table tbody tr:nth-child(7) { animation-delay: 0.7s; }
+        .table tbody tr:nth-child(8) { animation-delay: 0.8s; }
 
         /* Responsive Design */
         @media (max-width: 768px) {
@@ -535,7 +478,7 @@ if(count($classes_ids) > 0){
                 padding: 20px 15px;
             }
             
-            .card, .schedule-container {
+            .card, .homework-container {
                 padding: 25px 20px;
                 margin-bottom: 25px;
             }
@@ -552,9 +495,13 @@ if(count($classes_ids) > 0){
                 padding: 12px 8px;
             }
             
-            .course-card {
+            .download-link {
                 font-size: 0.75rem;
-                padding: 8px 6px;
+                padding: 6px 12px;
+            }
+            
+            .description-cell {
+                max-width: 150px;
             }
             
             .table tbody tr:hover {
@@ -564,7 +511,7 @@ if(count($classes_ids) > 0){
         }
 
         @media (max-width: 480px) {
-            .card, .schedule-container {
+            .card, .homework-container {
                 padding: 20px 15px;
                 border-radius: var(--border-radius-md);
             }
@@ -573,9 +520,13 @@ if(count($classes_ids) > 0){
                 font-size: 10px;
             }
             
-            .course-card {
+            .download-link {
                 font-size: 0.65rem;
-                padding: 6px 4px;
+                padding: 4px 8px;
+            }
+            
+            .description-cell {
+                max-width: 100px;
             }
         }
 
@@ -608,8 +559,152 @@ if(count($classes_ids) > 0){
         }
 
         /* Focus Management */
-        .course-card:focus {
+        .download-link:focus {
             outline: 2px solid var(--primary-color);
             outline-offset: 2px;
         }
+
+        /* Stats badges */
+        .stats-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat-badge {
+            background: var(--glass-bg);
+            backdrop-filter: var(--backdrop-blur);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--border-radius-md);
+            padding: 15px 25px;
+            text-align: center;
+            box-shadow: var(--shadow-light);
+            transition: var(--transition-smooth);
+            min-width: 120px;
+        }
+
+        .stat-badge:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-medium);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-dark);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
     </style>
+</head>
+<body>
+    <div class="container py-5 fade-in">
+        <div class="card">
+            <h2>
+                <i class="fas fa-graduation-cap student-icon"></i>
+                Mes Devoirs
+            </h2>
+
+            <?php if($homework_result->num_rows == 0): ?>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Aucun devoir disponible pour le moment.
+                </div>
+            <?php else: ?>
+                <!-- Stats badges -->
+                <div class="stats-container">
+                    <div class="stat-badge">
+                        <span class="stat-number"><?= $homework_result->num_rows ?></span>
+                        <span class="stat-label">Devoirs</span>
+                    </div>
+                </div>
+
+                <div class="homework-container">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th><i class="bi bi-people-fill me-2"></i>Classe</th>
+                                    <th><i class="bi bi-book me-2"></i>Matière</th>
+                                    <th><i class="bi bi-card-text me-2"></i>Titre</th>
+                                    <th><i class="bi bi-file-text me-2"></i>Description</th>
+                                    <th><i class="bi bi-calendar-event me-2"></i>Date limite</th>
+                                    <th><i class="bi bi-download me-2"></i>Fichier</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                // Reset result pointer for counting
+                                $homework_result->data_seek(0);
+                                while($d = $homework_result->fetch_assoc()): 
+                                    // Calculer l'urgence de la date
+                                    $date_limite = strtotime($d['date_limite']);
+                                    $today = strtotime(date('Y-m-d'));
+                                    $days_diff = ($date_limite - $today) / (60 * 60 * 24);
+                                    
+                                    $date_class = 'date-normal';
+                                    if($days_diff <= 1) {
+                                        $date_class = 'date-urgent';
+                                    } elseif($days_diff <= 3) {
+                                        $date_class = 'date-soon';
+                                    }
+                                ?>
+                                    <tr>
+                                        <td class="class-cell">
+                                            <i class="bi bi-mortarboard me-1"></i>
+                                            <?= htmlspecialchars($d['nom_de_classe']) ?>
+                                        </td>
+                                        <td class="subject-cell">
+                                            <i class="bi bi-journal-bookmark me-1"></i>
+                                            <?= htmlspecialchars($d['matiere']) ?>
+                                        </td>
+                                        <td class="title-cell">
+                                            <i class="bi bi-star-fill me-1"></i>
+                                            <?= htmlspecialchars($d['titre']) ?>
+                                        </td>
+                                        <td class="description-cell">
+                                            <?= nl2br(htmlspecialchars($d['description'])) ?>
+                                        </td>
+                                        <td class="date-cell <?= $date_class ?>">
+                                            <i class="bi bi-alarm me-1"></i>
+                                            <?= date('d/m/Y', strtotime($d['date_limite'])) ?>
+                                            <?php if($days_diff <= 1): ?>
+                                                <br><small><i class="bi bi-exclamation-triangle"></i> Urgent!</small>
+                                            <?php elseif($days_diff <= 3): ?>
+                                                <br><small><i class="bi bi-clock"></i> Bientôt</small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-center">
+                                            <?php if($d['fichier']): ?>
+                                                <a href="uploads/<?= htmlspecialchars($d['fichier']) ?>" 
+                                                   target="_blank" 
+                                                   class="download-link">
+                                                    <i class="bi bi-cloud-download me-1"></i>
+                                                    Télécharger
+                                                </a>
+                                            <?php else: ?>
+                                                <span class="empty-cell">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -97,7 +97,7 @@ if (!empty($message_iu)) echo $message_iu;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      background: url(assets/img/alwah\ out.jpg) no-repeat;
+      background: url(assets/img/alwah_out.jpg) no-repeat;
       background-size: cover;
       background-position: center;
     }

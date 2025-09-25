@@ -756,7 +756,7 @@ document.addEventListener("DOMContentLoaded", function() {
                       <ul class="menu-glass">
                         <li><button onclick="changerSite('Profil.php')">PROFIL</button></li>
                         <li><button onclick="changerSite('Marks.php')">MARKS</button></li>
-                        <li><button onclick="changerSite('Homeworks.html')">HOMEWORKS</button></li>
+                        <li><button onclick="changerSite('Homework_ar.php')">HOMEWORKS</button></li>
                         <li><button onclick="changerSite('slider.php')">NEWS</button></li>
                         <li><button onclick="changerSite('edt.php')">EDT</button></li>
                       </ul>
