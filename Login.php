@@ -1,17 +1,35 @@
 <?php
 session_start();
 include('db.php');
+require_once 'authorisation.php'; // CSRF + fonctions auth
 
 $message = "";
 $message_ip = "";
 $message_iu = "";
 
-// Check if form is submitted
+// 🔒 Protection brute-force
+$max_attempts = 2;
+$lockout_time = 30; // 5 minutes
+
+if (!isset($_SESSION['login_attempts'])) {
+    $_SESSION['login_attempts'] = 0;
+    $_SESSION['last_attempt'] = 0;
+}
+
+$diff = time() - ($_SESSION['last_attempt'] ?? 0);
+if ($_SESSION['login_attempts'] >= $max_attempts && $diff < $lockout_time) {
+    die("<div class='alert alert-danger'>⛔ Trop de tentatives. Réessayez dans " . ($lockout_time - $diff) . " secondes.</div>");
+}
+
+// Vérification du formulaire
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
+
+    // ✅ Vérification CSRF
+    validate_csrf();
+
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
 
-    // Check if username and password are empty
     if (empty($username) || empty($password)) {
         $message = "<div class='alert alert-warning'>⚠ Username and Password are required!</div>";
     } else {
@@ -24,34 +42,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         if ($result->num_rows > 0) {
             $user = $result->fetch_assoc();
 
-            // Password check (cast to int for now, adjust if using hashed passwords)
-            if ($password === $user['Password']) {
-                // Définir le rôle
-                $role = $user['role'];  // <-- ajoute cette ligne
+            if (!empty($user['Password_hash']) && password_verify($password, $user['Password_hash'])) {
+                // ✅ Reset brute-force
+                $_SESSION['login_attempts'] = 0;
 
                 // Set session variables
                 $_SESSION['user_id'] = $user['ID'];
                 $_SESSION['username'] = $user['Username'];
-                $_SESSION['role'] = $role;
+                $_SESSION['role'] = $user['role'];
 
-                // Redirect based on role
-                if ($role == 'eleve') {
-                    header("Location: Accueil.php");
-                    exit();
-                } else if ($role == 'prof') {
-                    header("Location: prof.php");
-                    exit();
-                } else if ($role == 'admin') {
-                    header("Location: admin.php");
-                    exit();
+                // Redirection selon rôle
+                switch($user['role']) {
+                    case 'eleve':
+                        header("Location: Accueil.php");
+                        exit();
+                    case 'prof':
+                        header("Location: prof.php");
+                        exit();
+                    case 'admin':
+                        header("Location: admin.php");
+                        exit();
+                    default:
+                        $message = "<div class='alert alert-danger'>❌ Rôle inconnu !</div>";
                 }
-            
 
             } else {
-                $message_ip = "<br>❌ Invalid password";
+                // Mauvais mot de passe
+                $_SESSION['login_attempts']++;
+                $_SESSION['last_attempt'] = time();
+                $message_ip = "<div class='alert alert-danger'>❌ Identifiants incorrects</div>";
             }
         } else {
-            $message_iu = "<br>❌ Username not found.";
+            // Nom d'utilisateur introuvable
+            $_SESSION['login_attempts']++;
+            $_SESSION['last_attempt'] = time();
+            $message_iu = "<div class='alert alert-danger'>❌ Identifiants incorrects</div>";
         }
 
         $stmt->close();
@@ -60,18 +85,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 }
 ?>
 
-<!-- Display messages in HTML -->
+<!-- Affichage des messages -->
 <?php
 if (!empty($message)) echo $message;
 if (!empty($message_ip)) echo $message_ip;
 if (!empty($message_iu)) echo $message_iu;
 ?>
-
-
-<!-- HTML part for displaying messages -->
-<?php if(!empty($message)) echo $message; ?>
-
-
 
 
 
@@ -200,6 +219,7 @@ if (!empty($message_iu)) echo $message_iu;
 <body>
   <div class="wrapper">
     <form action="Login.php" method="post">
+      <?= csrf_field() ?>
       <h1>Login</h1>
       <div class="input-box">
         <input type="text" name="username" placeholder="Username" required>

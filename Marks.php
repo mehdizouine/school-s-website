@@ -1,7 +1,10 @@
 <?php 
 session_start();
 include("db.php");
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('eleve');
 // Fonction pour récupérer toutes les notes d'un élève par semestre
 function getGrades($conn, $semestreId, $studentId) {
     $sql = "SELECT m.matiere, e.nom_examen, n.note

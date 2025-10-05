@@ -1,7 +1,10 @@
 <?php
 session_start();
 include('db.php');
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Ajouter une classe
 if (isset($_POST['add_class'])) {
     $nom = trim($_POST['nom_de_classe']);
@@ -243,6 +246,7 @@ $classes = $conn->query("SELECT * FROM classes ORDER BY nom_de_classe ASC");
         <div class="card fade-in">
             <h2><i class="bi bi-building me-2"></i>Ajouter une Classe</h2>
             <form method="POST" class="row g-3">
+                 <?= csrf_field() ?>
                 <div class="col-md-8">
                     <input type="text" name="nom_de_classe" class="form-control" placeholder="Nom de la classe" required>
                 </div>
@@ -274,6 +278,7 @@ $classes = $conn->query("SELECT * FROM classes ORDER BY nom_de_classe ASC");
                                 <td class="action-cell">
                                     <!-- Formulaire de modification inline -->
                                     <form method="POST" style="display:inline;">
+                                         <?= csrf_field() ?>
                                         <input type="hidden" name="id" value="<?= $row['ID'] ?>">
                                         <input type="text" name="nom_de_classe" 
                                                value="<?= htmlspecialchars($row['nom_de_classe']) ?>" 

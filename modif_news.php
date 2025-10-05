@@ -1,6 +1,9 @@
 <?php
 include("db.php");
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Ajouter / Editer news
 if(isset($_POST['save'])){
     // Vérifier si l'ID existe et est valide
@@ -693,6 +696,7 @@ button:focus, input:focus {
 <div class="add-news" onclick="document.getElementById('newForm').style.display='block';">➕ Ajouter une News</div>
 <div id="newForm" style="display:none; margin-bottom:30px;">
 <form method="POST" enctype="multipart/form-data" class="news-form">
+     <?= csrf_field() ?>
     <input type="file" name="photo" accept="image/*">
     <input type="text" name="titre" placeholder="Titre" required>
     <input type="text" name="sous_titre" placeholder="Sous-titre" required>
@@ -706,6 +710,7 @@ button:focus, input:focus {
 <div class="news-item">
     <img src="assets/img/<?php echo htmlspecialchars($n['photo'] ?: 'default.png'); ?>" alt="Preview" class="preview" id="preview-<?php echo $n['ID']; ?>">
     <form method="POST" enctype="multipart/form-data" class="news-form">
+         <?= csrf_field() ?>
         <input type="hidden" name="id" value="<?php echo $n['ID']; ?>">
         <input type="file" name="photo" accept="image/*" onchange="document.getElementById('preview-<?php echo $n['ID']; ?>').src=window.URL.createObjectURL(this.files[0])">
         <input type="text" name="titre" value="<?php echo htmlspecialchars($n['titre']); ?>" placeholder="Titre" required>

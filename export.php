@@ -1,6 +1,9 @@
 <?php
 include('db.php'); // connexion DB
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 $message = '';
 
 // Si le formulaire est soumis
@@ -755,6 +758,7 @@ select:focus, input[type="radio"]:focus, button:focus {
 
         <div class="card">
             <form method="POST">
+                 <?= csrf_field() ?>
                 <label for="table">Choisir la table à traiter :</label>
                 <select name="table" id="table" required>
                     <option value="">-- Sélectionner une table --</option>

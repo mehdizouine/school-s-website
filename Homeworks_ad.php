@@ -1,7 +1,10 @@
 <?php
 session_start();
 include('db.php');
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('prof');
 if (!isset($_SESSION['user_id'])) die("Accès refusé");
 $prof_id = $_SESSION['user_id'];
 
@@ -62,15 +65,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit'])) {
     $matiere_id = $_POST['matiere_id'];
     $date_limite = $_POST['date_limite'];
 
-    // Vérifier que le devoir appartient à une classe du prof
-    $check = $conn->prepare("SELECT id, fichier FROM devoirs d JOIN prof_classes pc ON d.classe_id=pc.classe_id WHERE d.id=? AND pc.prof_id=?");
+    // Vérifier que le devoir appartient bien à une classe du prof
+    $check = $conn->prepare("
+        SELECT d.id AS devoir_id, d.fichier
+        FROM devoirs d
+        JOIN prof_classes pc ON d.classe_id = pc.classe_id
+        WHERE d.id = ? AND pc.prof_id = ?
+    ");
     $check->bind_param("ii", $edit_id, $prof_id);
     $check->execute();
     $res = $check->get_result();
-    if ($res->num_rows === 0) { $error_message = "Modification impossible : accès refusé."; }
-    else {
+
+    if ($res->num_rows === 0) {
+        $error_message = "Modification impossible : accès refusé.";
+    } else {
         $devoir = $res->fetch_assoc();
         $fichier = $devoir['fichier'];
+
         if (!empty($_FILES['fichier']['name'])) {
             $upload_dir = "uploads/";
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
@@ -78,7 +89,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit'])) {
             $fichier = time() . "_" . uniqid() . "." . $file_extension;
             move_uploaded_file($_FILES['fichier']['tmp_name'], $upload_dir . $fichier);
         }
-        $stmt = $conn->prepare("UPDATE devoirs SET titre=?, description=?, classe_id=?, matiere_id=?, date_limite=?, fichier=? WHERE id=?");
+
+        $stmt = $conn->prepare("
+            UPDATE devoirs
+            SET titre=?, description=?, classe_id=?, matiere_id=?, date_limite=?, fichier=?
+            WHERE id=?
+        ");
         $stmt->bind_param("ssiissi", $titre, $description, $classe_id, $matiere_id, $date_limite, $fichier, $edit_id);
         if ($stmt->execute()) $success_message = "Devoir modifié avec succès !";
         else $error_message = "Erreur lors de la modification.";
@@ -90,20 +106,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit'])) {
 // --- Suppression d'un devoir ---
 if (isset($_GET['delete'])) {
     $delete_id = intval($_GET['delete']);
-    $check = $conn->prepare("SELECT d.id FROM devoirs d JOIN prof_classes pc ON d.classe_id = pc.classe_id WHERE d.id=? AND pc.prof_id=?");
+    $check = $conn->prepare("
+        SELECT d.id
+        FROM devoirs d
+        JOIN prof_classes pc ON d.classe_id = pc.classe_id
+        WHERE d.id=? AND pc.prof_id=?
+    ");
     $check->bind_param("ii", $delete_id, $prof_id);
     $check->execute();
     $res = $check->get_result();
-    if ($res->num_rows>0) {
+    if ($res->num_rows > 0) {
         $conn->query("DELETE FROM devoirs WHERE id=$delete_id");
         $success_message = "Devoir supprimé avec succès !";
-    } else { $error_message = "Suppression impossible : accès refusé."; }
+    } else {
+        $error_message = "Suppression impossible : accès refusé.";
+    }
     $check->close();
 }
 
 // --- Historique des devoirs ---
 $homework_history_res = $conn->prepare("
-    SELECT d.id, d.titre, d.description, d.date_limite, d.fichier, d.date_creation,
+    SELECT d.id AS devoir_id, d.titre, d.description, d.date_limite, d.fichier, d.date_creation,
            c.nom_de_classe, m.matiere
     FROM devoirs d
     JOIN classes c ON d.classe_id=c.ID
@@ -117,14 +140,20 @@ $homework_history_res->execute();
 $homework_history_result = $homework_history_res->get_result();
 
 // --- Edition inline ---
-$edit_id = isset($_GET['edit'])?intval($_GET['edit']):0;
+$edit_id = isset($_GET['edit']) ? intval($_GET['edit']) : 0;
 $edit_devoir = null;
-if ($edit_id>0) {
-    $stmt = $conn->prepare("SELECT * FROM devoirs d JOIN prof_classes pc ON d.classe_id=pc.classe_id WHERE d.id=? AND pc.prof_id=?");
-    $stmt->bind_param("ii",$edit_id,$prof_id);
+if ($edit_id > 0) {
+    $stmt = $conn->prepare("
+        SELECT d.id AS devoir_id, d.titre, d.description, d.classe_id, d.matiere_id,
+               d.date_limite, d.fichier
+        FROM devoirs d
+        JOIN prof_classes pc ON d.classe_id=pc.classe_id
+        WHERE d.id=? AND pc.prof_id=?
+    ");
+    $stmt->bind_param("ii", $edit_id, $prof_id);
     $stmt->execute();
     $res = $stmt->get_result();
-    if($res->num_rows>0) $edit_devoir = $res->fetch_assoc();
+    if ($res->num_rows > 0) $edit_devoir = $res->fetch_assoc();
     $stmt->close();
 }
 ?>
@@ -153,9 +182,10 @@ if ($edit_id>0) {
     <h2 class="card-header"><i class="fas fa-plus-circle"></i> <?= $edit_devoir?'Modifier':'Créer' ?> un Devoir</h2>
     <div class="card-body">
     <form method="post" enctype="multipart/form-data">
+         <?= csrf_field() ?>
         <?php if($edit_devoir): ?>
             <input type="hidden" name="edit" value="1">
-            <input type="hidden" name="edit_id" value="<?= $edit_devoir['id'] ?>">
+            <input type="hidden" name="edit_id" value="<?= $edit_devoir['devoir_id'] ?>">
         <?php else: ?>
             <input type="hidden" name="create" value="1">
         <?php endif; ?>
@@ -228,8 +258,8 @@ if ($edit_id>0) {
 <td><?= $d['date_creation'] ?></td>
 <td><?= $d['fichier']?'<a href="uploads/'.$d['fichier'].'" target="_blank"><i class="bi bi-download"></i></a>':'—' ?></td>
 <td>
-<a href="?edit=<?= $d['id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a>
-<a href="?delete=<?= $d['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer ce devoir ?')"><i class="bi bi-trash"></i></a>
+<a href="?edit=<?= $d['devoir_id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a>
+<a href="?delete=<?= $d['devoir_id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer ce devoir ?')"><i class="bi bi-trash"></i></a>
 </td>
 </tr>
 <?php endwhile; ?>
@@ -244,6 +274,7 @@ if ($edit_id>0) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
 
 <style>
         /* Sophisticated School Management System CSS - Teal Theme */

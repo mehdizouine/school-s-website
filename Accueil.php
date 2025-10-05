@@ -1,6 +1,10 @@
 <?php
 session_start();
 include("db.php");
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('eleve');
 $success = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
