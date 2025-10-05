@@ -1,11 +1,10 @@
 <?php
 session_start();
 include('db.php');
-
-// Vérifier si le prof est connecté
-if (!isset($_SESSION['user_id'])) {
-    die("Accès refusé : vous devez vous connecter.");
-}
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('prof');
 
 $prof_id = $_SESSION['user_id'];
 

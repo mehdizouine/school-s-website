@@ -1,7 +1,10 @@
 <?php
 session_start();
 include('db.php');
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Message de succès ou d'erreur
 $success = "";
 
@@ -70,6 +73,7 @@ $result = $conn->query("
             <div class="alert alert-info"><?= $success ?></div>
         <?php endif; ?>
         <form method="POST" class="row g-2">
+             <?= csrf_field() ?>
             <div class="col-md-2">
                 <select name="semestre" id="semestre" onchange="filterExamens()" required>
                     <option value=''>Semestre</option>

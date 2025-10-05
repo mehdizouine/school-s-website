@@ -1,6 +1,10 @@
 <?php
 include('db.php'); // connexion DB
 $message = '';
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Si le formulaire est soumis
 if (isset($_POST['table']) && isset($_FILES['csv_file'])) {
     // Sécuriser le nom de la table
@@ -407,6 +411,7 @@ select:focus, input[type="file"]:focus, button:focus {
         <?php endif; ?>
         <div class="card">
             <form method="POST" enctype="multipart/form-data">
+                 <?= csrf_field() ?>
                 <label for="table">Choisir la table :</label>
                 <select name="table" id="table" required>
                     <option value="">-- Sélectionner une table --</option>

@@ -1,6 +1,10 @@
 <?php
 session_start();
 include('db.php');
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 
 // Récupérer toutes les classes
 $classesList = $conn->query("SELECT * FROM classes ORDER BY nom_de_classe ASC");
@@ -15,7 +19,10 @@ if(isset($_POST['save_user'])) {
     $username = $_POST['username'];
     $password = $_POST['password'];
     $role = $_POST['role'];
-    $classe_ids = $_POST['classe_id'] ?? []; // Array pour multi-select
+    $classe_ids = $_POST['classe_id'] ?? [];
+
+    // Hasher le mot de passe uniquement si rempli
+    $hashedPassword = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
 
     if($id) {
         // Update user
@@ -25,17 +32,27 @@ if(isset($_POST['save_user'])) {
             $stmt->execute();
             $stmt->close();
         }
-        $sql = "UPDATE login SET Username=?, Password=?, role=? WHERE ID=?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssi", $username, $password, $role, $id);
+
+        // Si le mot de passe est vide → ne pas le modifier
+        if(!empty($password)) {
+            $sql = "UPDATE login SET Username=?, Password_hash=?, role=? WHERE ID=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sssi", $username, $hashedPassword, $role, $id);
+        } else {
+            $sql = "UPDATE login SET Username=?, role=? WHERE ID=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ssi", $username, $role, $id);
+        }
+
         $stmt->execute();
         $stmt->close();
+
     } else {
         // Add user
         $classe_id_single = ($role != 'prof') ? ($classe_ids[0] ?? null) : null;
-        $sql = "INSERT INTO login (Username, Password, role, classe_id) VALUES (?, ?, ?, ?)";
+        $sql = "INSERT INTO login (Username, Password_hash, role, classe_id) VALUES (?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssi", $username, $password, $role, $classe_id_single);
+        $stmt->bind_param("sssi", $username, $hashedPassword, $role, $classe_id_single);
         $stmt->execute();
         $id = $conn->insert_id;
         $stmt->close();
@@ -51,7 +68,7 @@ if(isset($_POST['save_user'])) {
         $stmt->close();
     }
 
-    header("Location: modif_user.php");
+    header("Location: modif-user.php");
     exit;
 }
 
@@ -62,12 +79,24 @@ if(isset($_GET['delete'])) {
     $stmt->bind_param("i",$id);
     $stmt->execute();
     $stmt->close();
-    header("Location: modif_user.php");
+    header("Location: modif-user.php");
     exit;
 }
 
 // Récupérer utilisateurs
 $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
+
+// Fonction helper pour récupérer les classes d'un prof
+function getProfClasses($conn, $prof_id){
+    $ids = [];
+    $q = $conn->prepare("SELECT classe_id FROM prof_classes WHERE prof_id=?");
+    $q->bind_param("i",$prof_id);
+    $q->execute();
+    $r = $q->get_result();
+    while($c = $r->fetch_assoc()) $ids[] = $c['classe_id'];
+    $q->close();
+    return $ids;
+}
 ?>
 
 <!DOCTYPE html>
@@ -86,13 +115,14 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
 
         <!-- Formulaire -->
         <form method="POST" class="row g-3">
+             <?= csrf_field() ?>
             <input type="hidden" name="id" id="id">
 
             <div class="col-md-3">
                 <input type="text" name="username" id="username" class="form-control" placeholder="Nom d’utilisateur" required>
             </div>
             <div class="col-md-3">
-                <input type="text" name="password" id="password" class="form-control" placeholder="Mot de passe" required>
+                <input type="text" name="password" id="password" class="form-control" placeholder="Mot de passe">
             </div>
             <div class="col-md-2">
                 <select name="role" id="role" class="form-select" required>
@@ -137,19 +167,15 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
                     <tr>
                         <td><?= $row['ID'] ?></td>
                         <td><?= htmlspecialchars($row['Username']) ?></td>
-                        <td><?= htmlspecialchars($row['Password']) ?></td>
+                        <td>********</td>
                         <td><span class="badge bg-info"><?= htmlspecialchars($row['role']) ?></span></td>
                         <td>
                         <?php
                             if($row['role'] == 'prof') {
-                                $q = $conn->prepare("SELECT c.nom_de_classe FROM prof_classes pc JOIN classes c ON pc.classe_id=c.ID WHERE pc.prof_id=?");
-                                $q->bind_param("i", $row['ID']);
-                                $q->execute();
-                                $r = $q->get_result();
+                                $classIds = getProfClasses($conn,$row['ID']);
                                 $classNames = [];
-                                while($c = $r->fetch_assoc()) $classNames[] = $c['nom_de_classe'];
+                                foreach($classIds as $cid) $classNames[] = $classes[$cid] ?? '';
                                 echo implode(", ", $classNames);
-                                $q->close();
                             } else {
                                 echo $classes[$row['classe_id']] ?? '-';
                             }
@@ -160,13 +186,13 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
                                 onclick="editUser(
                                     <?= $row['ID'] ?>,
                                     '<?= addslashes($row['Username']) ?>',
-                                    '<?= addslashes($row['Password']) ?>',
+                                    '',
                                     '<?= $row['role'] ?>',
-                                    <?= $row['role']=='prof' ? '['.implode(',', array_map(function($c){return $c;}, getProfClasses($conn,$row['ID']))).']' : ($row['classe_id'] ?? 'null') ?>
+                                    <?= $row['role']=='prof' ? '['.implode(',', getProfClasses($conn,$row['ID'])).']' : ($row['classe_id'] ?? 'null') ?>
                                 )">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
-                            <a href="modif_user.php?delete=<?= $row['ID'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer cet utilisateur ?')">
+                            <a href="modif-user.php?delete=<?= $row['ID'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer cet utilisateur ?')">
                                 <i class="bi bi-trash"></i>
                             </a>
                         </td>
@@ -179,7 +205,6 @@ $result = $conn->query("SELECT * FROM login ORDER BY ID ASC");
 </div>
 
 <script>
-// Gérer affichage multi-select
 const roleSelect = document.getElementById('role');
 const classeSelect = document.getElementById('classe_id');
 
@@ -193,24 +218,20 @@ roleSelect.addEventListener('change', function() {
     }
 });
 
-// Fonction d'édition
 function editUser(id, username, password, role, classe_ids){
     document.getElementById('id').value = id;
     document.getElementById('username').value = username;
     document.getElementById('password').value = password;
     document.getElementById('role').value = role;
 
-    // Décocher toutes les options
     Array.from(classeSelect.options).forEach(opt => opt.selected = false);
 
     if(role === 'prof') {
-        // Prof: sélectionner plusieurs classes
         classe_ids.forEach(cid => {
             const opt = Array.from(classeSelect.options).find(o => o.value==cid);
             if(opt) opt.selected = true;
         });
     } else {
-        // Élève/Admin: sélectionner la classe unique
         classeSelect.value = classe_ids;
     }
 
@@ -218,23 +239,8 @@ function editUser(id, username, password, role, classe_ids){
 }
 </script>
 
-<?php
-// Fonction helper pour récupérer les classes d'un prof
-function getProfClasses($conn, $prof_id){
-    $ids = [];
-    $q = $conn->prepare("SELECT classe_id FROM prof_classes WHERE prof_id=?");
-    $q->bind_param("i",$prof_id);
-    $q->execute();
-    $r = $q->get_result();
-    while($c = $r->fetch_assoc()) $ids[] = $c['classe_id'];
-    $q->close();
-    return $ids;
-}
-?>
-
 </body>
 </html>
-
 
 <style>
 /* Enhanced User Management System CSS - Light Teal Theme */

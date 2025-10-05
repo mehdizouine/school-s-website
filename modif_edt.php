@@ -1,7 +1,10 @@
 <?php
 session_start();
 include('db.php');
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Ajouter / Modifier un créneau
 if (isset($_POST['save_creneau'])) {
     $id = $_POST['id'] ?? '';
@@ -100,6 +103,7 @@ $edt_result = $conn->query("
 
         <!-- Formulaire d'ajout/modification -->
         <form method="POST" class="row g-3 mb-4">
+             <?= csrf_field() ?>
             <input type="hidden" name="id" id="id">
 
             <div class="col-md-2">

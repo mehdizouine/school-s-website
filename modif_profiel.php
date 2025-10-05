@@ -1,7 +1,10 @@
 <?php
 session_start();
 include("db.php");
-
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('admin');
 // Dossier d'uploads et image par défaut
 $uploadDir = "uploads/";
 $defaultPhoto = $uploadDir . "default.png";
@@ -644,6 +647,7 @@ button:focus, input:focus {
 ?>
 <div class="profile-card">
 <form method="POST" enctype="multipart/form-data">
+     <?= csrf_field() ?>
     <div class="profile-photo">
         <?php if (!empty($row['Photo'])): ?>
             <img src="<?= htmlspecialchars($row['Photo']) ?>" alt="Photo de profil">

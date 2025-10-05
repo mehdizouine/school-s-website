@@ -1,6 +1,10 @@
 <?php
 session_start();
 include("db.php");
+require_once 'authorisation.php';
+require_login();
+validate_csrf();
+require_role('prof');
 $success = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -773,6 +777,7 @@ document.addEventListener("DOMContentLoaded", function() {
       </div>
     </section>
     <form action="Accueil.php" method="post">
+       <?= csrf_field() ?>
       <section id="contact" class="paralax-mf footer-paralax bg-image sect-mt4 route" style="background-image: url(assets/img/alwah_out.jpg)">
         <div class="overlay-mf"></div>
         <div class="container">
