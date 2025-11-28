@@ -3,4 +3,4 @@ uploads/
 vendor/
 *.log
 db.php
-config.php
+config.php.env
