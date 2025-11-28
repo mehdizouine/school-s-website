@@ -18,7 +18,7 @@ if (isset($_POST['save_profile'])) {
     $email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES, 'UTF-8');
     $dob = $_POST['dob'] ?? null;
     $annee = $_POST['annee'] ?? null;
-    $classe = htmlspecialchars($_POST['classe'] ?? '', ENT_QUOTES, 'UTF-8');
+    $classe = $_POST['classe'] ?? null; // ID de la classe
 
     // Upload photo si fournie
     $photo = '';
@@ -54,7 +54,7 @@ if (isset($_POST['save_profile'])) {
 
     $stmt->execute();
     $stmt->close();
-    header("Location: modif_profiel.php");
+    header("Location: modif-profil.php");
     exit;
 }
 
@@ -66,6 +66,13 @@ $profils = $conn->query("
     LEFT JOIN profil p ON l.ID = p.ID
     ORDER BY l.Username
 ");
+
+// Récupération de toutes les classes pour le select
+$allClasses = $conn->query("SELECT ID, nom_de_classe FROM classes ORDER BY nom_de_classe ASC");
+$classesArray = [];
+while($c = $allClasses->fetch_assoc()) {
+    $classesArray[$c['ID']] = $c['nom_de_classe'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -74,6 +81,65 @@ $profils = $conn->query("
 <meta charset="UTF-8">
 <title>Modifier Profils</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+<h2>Modifier / Ajouter Profils</h2>
+<div class="profile-grid">
+<?php while($row = $profils->fetch_assoc()): 
+    $initiales = strtoupper(substr($row['Prénom'] ?? '',0,1) . substr($row['Nom'] ?? '',0,1));
+?>
+<div class="profile-card">
+<form method="POST" enctype="multipart/form-data">
+     <?= csrf_field() ?>
+    <div class="profile-photo">
+        <?php if (!empty($row['Photo'])): ?>
+            <img src="<?= htmlspecialchars($row['Photo']) ?>" alt="Photo de profil">
+        <?php else: ?>
+            <?= $initiales ?: '👤' ?>
+        <?php endif; ?>
+    </div>
+
+    <label>Utilisateur</label>
+    <input type="text" value="<?= htmlspecialchars($row['Username']) ?>" disabled>
+
+    <label>Photo</label>
+    <input type="file" name="photo" accept="image/*">
+
+    <label>Prénom</label>
+    <input type="text" name="prenom" value="<?= htmlspecialchars($row['Prénom'] ?? '') ?>">
+
+    <label>Nom</label>
+    <input type="text" name="nom" value="<?= htmlspecialchars($row['Nom'] ?? '') ?>">
+
+    <label>Email</label>
+    <input type="email" name="email" value="<?= htmlspecialchars($row['Email'] ?? '') ?>">
+
+    <label>Date de naissance</label>
+    <input type="date" name="dob" value="<?= htmlspecialchars($row['Date_de_naissance'] ?? '') ?>">
+
+    <label>Année scolaire</label>
+    <input type="date" name="annee" value="<?= htmlspecialchars($row['Année_scolaire'] ?? '') ?>">
+
+    <label>Classe</label>
+    <select name="classe" class="form-select profile-input">
+        <?php foreach($classesArray as $idClasse => $nomClasse): ?>
+            <option value="<?= $idClasse ?>" <?= ($row['Classe'] == $idClasse) ? 'selected' : '' ?>>
+                <?= htmlspecialchars($nomClasse) ?>
+            </option>
+        <?php endforeach; ?>
+    </select>
+
+    <input type="hidden" name="id" value="<?= $row['ID'] ?>">
+    <button type="submit" name="save_profile">💾 Enregistrer</button>
+</form>
+</div>
+<?php endwhile; ?>
+</div>
+</div>
+</body>
+</html>
+
 <style>
 /* Enhanced Profile Management System CSS - Teal Theme with Light Colors */
 
@@ -636,56 +702,40 @@ button:focus, input:focus {
         display: block;
     }
 }
+/* Style select pour qu'il corresponde aux inputs */
+.profile-card select.profile-input {
+    padding: 15px 18px;
+    border-radius: var(--border-radius-sm);
+    border: 2px solid rgba(27, 209, 194, 0.3);
+    width: 100%;
+    margin-bottom: 12px;
+    transition: var(--transition-smooth);
+    background: var(--input-bg);
+    backdrop-filter: blur(5px);
+    color: #2d3748;
+    font-weight: 500;
+    font-size: 15px;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.06), 0 2px 10px rgba(14, 119, 112, 0.08);
+}
+
+.profile-card select.profile-input:focus {
+    border-color: var(--primary-dark);
+    outline: none;
+    background: var(--input-focus-bg);
+    box-shadow: 
+        0 0 0 4px rgba(27, 209, 194, 0.25),
+        inset 0 2px 8px rgba(0, 0, 0, 0.06),
+        0 4px 20px rgba(14, 119, 112, 0.15);
+    transform: translateY(-2px);
+}
+
+.profile-card select.profile-input:hover {
+    border-color: var(--primary-color);
+    background: rgba(255, 255, 255, 0.95);
+    transform: translateY(-1px);
+    box-shadow: 
+        inset 0 2px 8px rgba(0, 0, 0, 0.06),
+        0 3px 15px rgba(14, 119, 112, 0.12);
+}
+
 </style>
-</head>
-<body>
-<div class="container">
-<h2>Modifier / Ajouter Profils</h2>
-<div class="profile-grid">
-<?php while($row = $profils->fetch_assoc()): 
-    $initiales = strtoupper(substr($row['Prénom'] ?? '',0,1) . substr($row['Nom'] ?? '',0,1));
-?>
-<div class="profile-card">
-<form method="POST" enctype="multipart/form-data">
-     <?= csrf_field() ?>
-    <div class="profile-photo">
-        <?php if (!empty($row['Photo'])): ?>
-            <img src="<?= htmlspecialchars($row['Photo']) ?>" alt="Photo de profil">
-        <?php else: ?>
-            <?= $initiales ?: '👤' ?>
-        <?php endif; ?>
-    </div>
-
-    <label>Utilisateur</label>
-    <input type="text" value="<?= htmlspecialchars($row['Username']) ?>" disabled>
-
-    <label>Photo</label>
-    <input type="file" name="photo" accept="image/*">
-
-    <label>Prénom</label>
-    <input type="text" name="prenom" value="<?= htmlspecialchars($row['Prénom'] ?? '') ?>">
-
-    <label>Nom</label>
-    <input type="text" name="nom" value="<?= htmlspecialchars($row['Nom'] ?? '') ?>">
-
-    <label>Email</label>
-    <input type="email" name="email" value="<?= htmlspecialchars($row['Email'] ?? '') ?>">
-
-    <label>Date de naissance</label>
-    <input type="date" name="dob" value="<?= htmlspecialchars($row['Date_de_naissance'] ?? '') ?>">
-
-    <label>Année scolaire</label>
-    <input type="date" name="annee" value="<?= htmlspecialchars($row['Année_scolaire'] ?? '') ?>">
-
-    <label>Classe</label>
-    <input type="text" name="classe" value="<?= htmlspecialchars($row['Classe'] ?? '') ?>">
-
-    <input type="hidden" name="id" value="<?= $row['ID'] ?>">
-    <button type="submit" name="save_profile">💾 Enregistrer</button>
-</form>
-</div>
-<?php endwhile; ?>
-</div>
-</div>
-</body>
-</html>

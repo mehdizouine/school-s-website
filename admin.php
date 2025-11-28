@@ -769,6 +769,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             <li><button onclick="changerSite('modif_edt.php')">modif_edt</button></li>
                             <li><button onclick="changerSite('export.php')">excel</button></li>
                             <li><button onclick="changerSite('import.php')">import-excel</button></li>
+                            <li><button onclick="changerSite('newsletter-admin.php')">la newsletter</button></li>
                       </ul>
                     </div>
                    
