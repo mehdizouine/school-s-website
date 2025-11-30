@@ -9,7 +9,16 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require 'vendor/autoload.php';
 
-// --- Partie Autocomplétion AJAX ---
+// --- Charger les variables depuis .env ---
+$env = parse_ini_file(__DIR__.'/.env');
+$smtpHost = $env['SMTP_HOST'];
+$smtpPort = $env['SMTP_PORT'];
+$smtpUser = $env['SMTP_USER'];
+$smtpPass = $env['SMTP_PASS'];
+$fromEmail = $env['FROM_EMAIL'];
+$fromName = $env['FROM_NAME'];
+
+// --- Autocomplétion AJAX ---
 if(isset($_GET['q'])) {
     $q = "%{$_GET['q']}%";
     $results = [];
@@ -36,7 +45,7 @@ if(isset($_GET['q'])) {
     exit;
 }
 
-// --- Partie envoi de newsletter ---
+// --- Envoi de newsletter ---
 if(isset($_POST['send_newsletter'])) {
     $toList = $_POST['to'] ?? '';
     $subject = $_POST['subject'] ?? '';
@@ -49,14 +58,14 @@ if(isset($_POST['send_newsletter'])) {
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
-        $mail->Host = 'smtp.gmail.com';
+        $mail->Host = $smtpHost;
         $mail->SMTPAuth = true;
-        $mail->Username = 'mehdizouine2007@gmail.com';
-        $mail->Password = 'jhvdrzlomcidvfwo';
+        $mail->Username = $smtpUser;
+        $mail->Password = $smtpPass;
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = 587;
+        $mail->Port = $smtpPort;
 
-        $mail->setFrom('ton.email@gmail.com', 'Admin Ecole');
+        $mail->setFrom($fromEmail, $fromName);
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body = nl2br($message);
@@ -84,12 +93,152 @@ if(isset($_POST['send_newsletter'])) {
 }
 ?>
 
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <title>Newsletter Admin</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<h2 style="text-align:center; color: #fff; margin-bottom: 30px;">📧 Envoyer Newsletter</h2>
+
+<div class="container">
+    <?php if (!empty($notice)) echo $notice; ?>
+
+    <form method="POST" id="newsletter-form">
+        <div class="mb-3">
+            <label style="font-weight:700">Destinataires (emails ou classes)</label>
+        </div>
+
+        <div style="position: relative; margin-bottom: 25px;">
+            <div class="to-input-container" id="to-container">
+                <input type="text" id="to-input" autocomplete="off" placeholder="Tapez un email ou une classe...">
+            </div>
+            <div id="suggestions" class="suggestions-box"></div>
+            <input type="hidden" name="to" id="to-hidden">
+        </div>
+
+        <div class="mb-3">
+            <label style="font-weight:700">Sujet</label>
+            <input type="text" name="subject" placeholder="Entrez le sujet de la newsletter" required>
+        </div>
+
+        <div class="mb-3">
+            <label style="font-weight:700">Message</label>
+            <textarea name="message" placeholder="Rédigez votre message ici..." required></textarea>
+        </div>
+
+        <button type="submit" name="send_newsletter">✉️ Envoyer Newsletter</button>
+    </form>
+</div>
+
+<script>
+const container = document.getElementById('to-container');
+const input = document.getElementById('to-input');
+const suggestionsBox = document.getElementById('suggestions');
+const hiddenInput = document.getElementById('to-hidden');
+let recipients = [];
+
+function updateHiddenInput() {
+    hiddenInput.value = recipients.join(',');
+}
+
+function createChip(value) {
+    const chip = document.createElement('div');
+    chip.className = 'to-chip';
+    chip.textContent = value;
+    const remove = document.createElement('span');
+    remove.textContent = ' ×';
+    remove.style.cursor = 'pointer';
+    remove.style.marginLeft = '8px';
+    remove.onclick = () => {
+        container.removeChild(chip);
+        recipients = recipients.filter(r => r !== value);
+        updateHiddenInput();
+    };
+    chip.appendChild(remove);
+    return chip;
+}
+
+function addRecipient(value) {
+    if (!value) return;
+    value = value.trim();
+    if (recipients.includes(value)) return;
+    recipients.push(value);
+    const chip = createChip(value);
+    // insert before the input field
+    container.insertBefore(chip, input);
+    input.value = '';
+    updateHiddenInput();
+}
+
+input.addEventListener('input', function() {
+    const query = this.value.trim();
+    if (query.length < 1) {
+        suggestionsBox.style.display = 'none';
+        return;
+    }
+
+    fetch(window.location.pathname + '?q=' + encodeURIComponent(query))
+        .then(res => res.json())
+        .then(data => {
+            suggestionsBox.innerHTML = '';
+            if (data.length > 0) {
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.textContent = item;
+                    div.addEventListener('click', () => {
+                        addRecipient(item);
+                        suggestionsBox.style.display = 'none';
+                    });
+                    suggestionsBox.appendChild(div);
+                });
+                suggestionsBox.style.display = 'block';
+            } else {
+                suggestionsBox.style.display = 'none';
+            }
+        }).catch(err => {
+            suggestionsBox.style.display = 'none';
+            console.error(err);
+        });
+});
+
+input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const value = this.value.trim();
+        if (value) addRecipient(value);
+        suggestionsBox.style.display = 'none';
+    } else if (e.key === 'Backspace' && this.value === '') {
+        const chips = container.querySelectorAll('.to-chip');
+        if (chips.length > 0) {
+            const last = chips[chips.length - 1];
+            const val = last.textContent.replace(' ×', '').trim();
+            last.remove();
+            recipients = recipients.filter(r => r !== val);
+            updateHiddenInput();
+        }
+    }
+});
+
+document.addEventListener('click', e => {
+    if (!container.contains(e.target)) {
+        suggestionsBox.style.display = 'none';
+    }
+});
+
+// submit handler to ensure hidden input up to date
+document.getElementById('newsletter-form').addEventListener('submit', function() {
+    updateHiddenInput();
+});
+</script>
+
+</body>
+</html>
+
 <style>
 /* Enhanced Newsletter Admin CSS - Teal Theme */
 
@@ -619,113 +768,4 @@ button:focus, input:focus, textarea:focus {
     }
 }
 </style>
-</head>
-<body>
 
-<h2>📧 Envoyer Newsletter</h2>
-
-<div class="container">
-    <form method="POST" id="newsletter-form">
-        <div class="mb-3">
-            <label>Destinataires (emails ou classes)</label>
-        </div>
-        <div style="position: relative; margin-bottom: 25px;">
-            <div class="to-input-container" id="to-container">
-                <input type="text" id="to-input" autocomplete="off" placeholder="Tapez un email ou une classe...">
-            </div>
-            <div id="suggestions" class="suggestions-box"></div>
-            <input type="hidden" name="to" id="to-hidden">
-        </div>
-
-        <div class="mb-3">
-            <label>Sujet</label>
-            <input type="text" name="subject" placeholder="Entrez le sujet de la newsletter" required>
-        </div>
-
-        <div class="mb-3">
-            <label>Message</label>
-            <textarea name="message" placeholder="Rédigez votre message ici..." required></textarea>
-        </div>
-
-        <button type="submit" name="send_newsletter">✉️ Envoyer Newsletter</button>
-    </form>
-</div>
-
-<script>
-const container = document.getElementById('to-container');
-const input = document.getElementById('to-input');
-const suggestionsBox = document.getElementById('suggestions');
-const hiddenInput = document.getElementById('to-hidden');
-let recipients = [];
-
-function updateHiddenInput() {
-    hiddenInput.value = recipients.join(',');
-}
-
-function addRecipient(value) {
-    if (!value || recipients.includes(value)) return;
-    recipients.push(value);
-    const chip = document.createElement('div');
-    chip.className = 'to-chip';
-    chip.textContent = value;
-    const remove = document.createElement('span');
-    remove.textContent = '×';
-    remove.onclick = () => {
-        container.removeChild(chip);
-        recipients = recipients.filter(r => r !== value);
-        updateHiddenInput();
-    };
-    chip.appendChild(remove);
-    container.insertBefore(chip, input);
-    input.value = '';
-    updateHiddenInput();
-}
-
-input.addEventListener('input', function() {
-    const query = this.value;
-    if(query.length < 1) {
-        suggestionsBox.style.display = 'none';
-        return;
-    }
-    
-    fetch('newsletter-admin.php?q=' + encodeURIComponent(query))
-        .then(res => res.json())
-        .then(data => {
-            suggestionsBox.innerHTML = '';
-            if(data.length > 0) {
-                data.forEach(item => {
-                    const div = document.createElement('div');
-                    div.textContent = item;
-                    div.addEventListener('click', () => addRecipient(item));
-                    suggestionsBox.appendChild(div);
-                });
-                suggestionsBox.style.display = 'block';
-            } else suggestionsBox.style.display = 'none';
-        });
-});
-
-input.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' || e.key === ',') {
-        e.preventDefault();
-        addRecipient(this.value.trim());
-        suggestionsBox.style.display = 'none';
-    } else if (e.key === 'Backspace' && this.value === '') {
-        const chips = container.querySelectorAll('.to-chip');
-        if(chips.length > 0){
-            const last = chips[chips.length - 1];
-            last.remove();
-            recipients.pop();
-            updateHiddenInput();
-        }
-    }
-});
-
-document.addEventListener('click', e => {
-    if(!container.contains(e.target)){
-        suggestionsBox.style.display = 'none';
-    }
-});
-</script>
-
-</body>
-</html>

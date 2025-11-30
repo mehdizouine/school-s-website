@@ -3,13 +3,14 @@ session_start();
 include('db.php');
 require_once 'authorisation.php'; // CSRF + fonctions auth
 
+// ⚠️ Initialiser toutes les variables de message pour éviter les warnings
 $message = "";
 $message_ip = "";
 $message_iu = "";
 
 // 🔒 Protection brute-force
 $max_attempts = 2;
-$lockout_time = 30; // 5 minutes
+$lockout_time = 30; // 30 secondes
 
 if (!isset($_SESSION['login_attempts'])) {
     $_SESSION['login_attempts'] = 0;
@@ -42,16 +43,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         if ($result->num_rows > 0) {
             $user = $result->fetch_assoc();
 
-            if (!empty($user['Password_hash']) && password_verify($password, $user['Password_hash'])) {
-                // ✅ Reset brute-force
+            // 🔹 Comparaison mot de passe en clair
+            if ($password === $user['Password']) {
+
                 $_SESSION['login_attempts'] = 0;
 
-                // Set session variables
                 $_SESSION['user_id'] = $user['ID'];
                 $_SESSION['username'] = $user['Username'];
                 $_SESSION['role'] = $user['role'];
 
-                // Redirection selon rôle
                 switch($user['role']) {
                     case 'eleve':
                         header("Location: Accueil.php");
@@ -67,13 +67,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
                 }
 
             } else {
-                // Mauvais mot de passe
                 $_SESSION['login_attempts']++;
                 $_SESSION['last_attempt'] = time();
                 $message_ip = "<div class='alert alert-danger'>❌ Identifiants incorrects</div>";
             }
         } else {
-            // Nom d'utilisateur introuvable
             $_SESSION['login_attempts']++;
             $_SESSION['last_attempt'] = time();
             $message_iu = "<div class='alert alert-danger'>❌ Identifiants incorrects</div>";
@@ -83,10 +81,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         $conn->close();
     }
 }
-?>
 
-<!-- Affichage des messages -->
-<?php
+// 🔹 Affichage des messages
 if (!empty($message)) echo $message;
 if (!empty($message_ip)) echo $message_ip;
 if (!empty($message_iu)) echo $message_iu;

@@ -1,72 +1,123 @@
 <?php
-include('db.php'); // connexion DB
-$message = '';
+include('db.php');
 require_once 'authorisation.php';
+
+// Vérifications de sécurité
 require_login();
 validate_csrf();
 require_role('admin');
-// Si le formulaire est soumis
+
+$message = '';
+
 if (isset($_POST['table']) && isset($_FILES['csv_file'])) {
-    // Sécuriser le nom de la table
+
     $table = preg_replace('/[^a-zA-Z0-9_]/', '', $_POST['table']);
+
     // Vérifier si la table existe
     $result = $conn->query("SHOW TABLES LIKE '$table'");
     if ($result->num_rows == 0) {
         $message = "Table inexistante !";
     } else {
+
         $file = $_FILES['csv_file']['tmp_name'];
+
         if (($handle = fopen($file, "r")) !== FALSE) {
-            // Sauvegarde automatique de la table avant import
+
+            // ---- Sauvegarde automatique ----
             $backupTable = $table . '_backup_' . date('Ymd_His');
             $conn->query("CREATE TABLE `$backupTable` AS SELECT * FROM `$table`");
-            // Vider la table
-            $conn->query("TRUNCATE TABLE `$table`");
-            // Lire l'entête et nettoyer le BOM UTF-8
+
+            // Lire entête CSV
             $headers = fgetcsv($handle, 1000, ';');
-            if (substr($headers[0], 0,3) === "\xEF\xBB\xBF") {
+
+            // Corriger BOM UTF-8
+            if (substr($headers[0], 0, 3) === "\xEF\xBB\xBF") {
                 $headers[0] = substr($headers[0], 3);
             }
-            // Récupérer les colonnes de la table
+
+            // Obtenir colonnes réelles de la table
             $resCols = $conn->query("SELECT * FROM `$table` LIMIT 1");
             $tableCols = [];
             foreach ($resCols->fetch_fields() as $col) {
                 $tableCols[] = $col->name;
             }
-            // Correspondance des colonnes (ignore les colonnes supplémentaires dans le CSV)
+
+            // Colonnes valides
             $validCols = array_intersect($headers, $tableCols);
+
             if (empty($validCols)) {
-                $message = "Aucune colonne valide trouvée pour l'import.";
+                $message = "Aucune colonne valide trouvée.";
             } else {
+
                 $rowCount = 0;
+
                 while (($data = fgetcsv($handle, 1000, ';')) !== FALSE) {
-                    $pairs = [];
+
+                    $rowData = [];
                     foreach ($validCols as $i => $colName) {
-                        if(isset($data[$i])) {
-                            $pairs[$colName] = $conn->real_escape_string($data[$i]);
+                        if (!isset($data[$i])) continue;
+
+                        $value = $conn->real_escape_string($data[$i]);
+
+                        // On laisse le mot de passe tel quel, pas de hash
+
+                        // classe_id vide → NULL
+                        if ($colName === 'classe_id' && ($value === '' || strtolower($value) === 'null')) {
+                            $rowData[$colName] = "NULL";
+                        } else {
+                            $rowData[$colName] = "'$value'";
                         }
                     }
-                    if(!empty($pairs)) {
-                        // Construire INSERT
-                        $columnsStr = [];
-                        foreach($pairs as $col => $val){
-                            $columnsStr[] = "`$col`='$val'";
+
+                    if (!empty($rowData)) {
+
+                        // On suppose que "ID" est la clé primaire
+                        $idColumn = "ID";
+
+                        if (in_array($idColumn, $validCols)) {
+                            $idValue = $data[array_search($idColumn, $headers)];
+                            $idValue = $conn->real_escape_string($idValue);
+
+                            // Vérifier si la ligne existe déjà
+                            $check = $conn->query("SELECT $idColumn FROM `$table` WHERE $idColumn = '$idValue'");
+
+                            if ($check->num_rows > 0) {
+                                // ---- UPDATE ----
+                                $updates = [];
+                                foreach ($rowData as $col => $val) {
+                                    $updates[] = "`$col` = $val";
+                                }
+                                $updateSQL = "UPDATE `$table` SET " . implode(',', $updates) . " WHERE `$idColumn` = '$idValue'";
+                                $conn->query($updateSQL);
+                            } else {
+                                // ---- INSERT ----
+                                $columns = '`' . implode('`,`', array_keys($rowData)) . '`';
+                                $values = implode(",", array_values($rowData));
+                                $insertSQL = "INSERT INTO `$table` ($columns) VALUES ($values)";
+                                $conn->query($insertSQL);
+                            }
                         }
-                        $sql = "INSERT INTO `$table` SET ".implode(',', $columnsStr);
-                        $conn->query($sql);
+
                         $rowCount++;
                     }
                 }
-                $message = "$rowCount lignes importées dans la table '$table'.<br>Sauvegarde automatique : $backupTable";
+
+                $message = "$rowCount lignes traitées (insert/update).<br>Sauvegarde : $backupTable";
             }
+
             fclose($handle);
+
         } else {
             $message = "Impossible de lire le fichier CSV.";
         }
     }
 }
-// Récupérer toutes les tables pour le menu
+
+// Récupération des tables
 $tables = $conn->query("SHOW TABLES")->fetch_all(MYSQLI_NUM);
 ?>
+
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
