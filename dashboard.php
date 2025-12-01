@@ -244,6 +244,20 @@ h1 {
   to { transform: rotate(360deg); }
 }
 
+/* ====== Graphiques avec scroll horizontal ====== */
+.chart-container-scrollable {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+  margin: 1.1rem 0;
+}
+
+.chart-wrapper {
+  min-width: 100%;
+  display: inline-block;
+}
+
 /* ====== Responsive ====== */
 @media (max-width: 1199px) {
   .grid {
@@ -348,6 +362,10 @@ select.form-select:not(:disabled):hover {
     </select>
   </div>
 </div>
+<!-- Résumé de la classe -->
+<div id="resume-classe" class="card-glass mb-3" style="display:none; background: rgba(255,255,255,0.9);">
+  <div id="resume-content" class="d-flex flex-wrap gap-3"></div>
+</div>
 
 <!-- 4 cartes dynamiques SANS graphique -->
 <div class="grid">
@@ -402,7 +420,27 @@ select.form-select:not(:disabled):hover {
         <small id="note-count" class="text-muted-small"></small>
       </div>
       <div id="loading-msg"><span class="spinner"></span> Chargement…</div>
-      <div class="chart-container"><canvas id="exam-notes-chart"></canvas></div>
+
+      <!-- ✅ Graphique de progression -->
+      <div class="chart-container-scrollable" id="progression-chart-container" style="display:none;">
+        <h6 class="mb-2">📈 Progression dans la matière</h6>
+        <div class="chart-wrapper">
+          <canvas id="progression-chart" height="200"></canvas>
+        </div>
+      </div>
+      <!-- Histogramme de distribution -->
+      <div class="chart-container-scrollable" id="distribution-chart-container" style="display:none;">
+        <h6 class="mb-2">📊 Distribution des notes</h6>
+        <div class="chart-wrapper">
+          <canvas id="distribution-chart" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-container-scrollable">
+        <div class="chart-wrapper">
+          <canvas id="exam-notes-chart" height="280"></canvas>
+        </div>
+      </div>
       <div class="table-responsive mt-3">
         <table class="table table-sm">
           <thead><tr><th>Élève</th><th>Examen</th><th>Note</th><th>Semestre</th></tr></thead>
@@ -431,6 +469,17 @@ select.form-select:not(:disabled):hover {
         </table>
       </div>
     </div>
+    <div class="card-glass mb-3">
+      <h6>⚠️ Alertes pédagogiques</h6>
+      <div class="table-responsive" style="max-height:300px">
+        <table class="table table-sm">
+          <thead><tr><th>Note</th><th>Élève</th><th>Matière</th></tr></thead>
+          <tbody id="alertes-tbody">
+            <tr><td colspan="3" class="text-center"><span class="spinner"></span> Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="card-glass">
       <h6>Actions rapides</h6>
@@ -455,6 +504,10 @@ document.getElementById('filter-classe-main').addEventListener('change', e => {
   document.getElementById('filter-examen').disabled = true;
   document.getElementById('filter-semestre').disabled = true;
   ['filter-matiere','filter-examen','filter-semestre'].forEach(id => document.getElementById(id).value = '');
+  
+  // 👇 Ajout ici : charger le résumé de la classe
+  loadResumeClasse(e.target.value);
+  
   document.getElementById('notes-detail-section').style.display = 'none';
 });
 
@@ -469,6 +522,91 @@ document.getElementById('filter-matiere').addEventListener('change', e => {
 document.getElementById('filter-examen').addEventListener('change', loadNotesForClassAndMatiere);
 document.getElementById('filter-semestre').addEventListener('change', loadNotesForClassAndMatiere);
 
+// ========= GRAPHIQUE DE PROGRESSION =========
+let progressionChart = null;
+async function loadProgressionChart(classeId, matiereId) {
+  const container = document.getElementById('progression-chart-container');
+  const chartEl = document.getElementById('progression-chart');
+
+  try {
+    const res = await fetchJSON(`api.php?action=notes_par_examen&classe=${classeId}&matiere=${matiereId}`);
+    if (res.error || !Array.isArray(res) || res.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    const labels = res.map(r => r.nom_examen);
+    const data = res.map(r => r.moyenne);
+    const counts = res.map(r => r.nb_notes);
+
+    const ctx = chartEl.getContext('2d');
+    if (progressionChart) progressionChart.destroy();
+
+    const barWidth = 120;
+    const chartWidth = Math.max(labels.length * barWidth, 500);
+    chartEl.width = chartWidth;
+    chartEl.height = 200;
+
+    progressionChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Moyenne par examen',
+          data,
+          borderColor: 'rgba(14,119,112,1)',
+          backgroundColor: 'rgba(14,119,112,0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: 'rgba(14,119,112,1)'
+        }]
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const avg = context.parsed.y;
+                const count = counts[context.dataIndex];
+                return [
+                  `Moyenne : ${avg.toFixed(2)}/20`,
+                  `Notes : ${count}`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 20,
+            ticks: { stepSize: 2 }
+          },
+          x: {
+            ticks: {
+              autoSkip: false,
+              maxRotation: 0,
+              minRotation: 0
+            }
+          }
+        }
+      }
+    });
+
+    container.style.display = 'block';
+
+  } catch (err) {
+    console.error('Erreur progression:', err);
+    container.style.display = 'none';
+  }
+}
+
+// ========= GRAPHIQUE PAR ÉLÈVE =========
 let examNotesChart = null;
 async function loadNotesForClassAndMatiere() {
   const classeId = document.getElementById('filter-classe-main').value;
@@ -511,18 +649,37 @@ async function loadNotesForClassAndMatiere() {
       })
       .sort((a, b) => b.avg - a.avg);
 
-    tbody.innerHTML = '';
-    elevesSorted.forEach(({ name, notes }) => {
+    // 1. Aplatir toutes les notes dans un seul tableau
+    const allNotes = [];
+    Object.entries(notesByEleve).forEach(([name, notes]) => {
       notes.forEach(note => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${note.Username}</td>
-          <td>${note.nom_examen || '—'}</td>
-          <td>${parseFloat(note.note).toFixed(1)}/20</td>
-          <td>${note.nom_semestre || '—'}</td>
-        `;
-        tbody.appendChild(tr);
+        allNotes.push({
+          Username: note.Username,
+          nom_examen: note.nom_examen || '—',
+          note: parseFloat(note.note),
+          nom_semestre: note.nom_semestre || '—'
+        });
       });
+    });
+
+    // 2. Trier par note (décroissant), puis par nom
+    allNotes.sort((a, b) => {
+      if (b.note !== a.note) return b.note - a.note;
+      return a.Username.localeCompare(b.Username);
+    });
+
+    // 3. Générer le tableau avec emoji à côté des NOTES
+    tbody.innerHTML = '';
+    allNotes.forEach(note => {
+      const noteEmoji = note.note >= 15 ? '🟢' : (note.note >= 10 ? '🟡' : '🔴');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${note.Username}</td>
+        <td>${note.nom_examen}</td>
+        <td>${noteEmoji} ${note.note.toFixed(1)}/20</td>
+        <td>${note.nom_semestre}</td>
+      `;
+      tbody.appendChild(tr);
     });
 
     const classeNom = document.querySelector(`#filter-classe-main option[value="${classeId}"]`).textContent;
@@ -530,11 +687,18 @@ async function loadNotesForClassAndMatiere() {
     document.getElementById('detail-title').textContent = `${classeNom} — ${matiereNom}`;
     noteCountEl.textContent = `${res.length} note${res.length > 1 ? 's' : ''}`;
 
+    // Graphique par élève (sans emoji dans les labels)
     const labels = elevesSorted.map(e => e.name);
     const data = elevesSorted.map(e => parseFloat(e.avg.toFixed(2)));
 
     const ctx = chartEl.getContext('2d');
     if (examNotesChart) examNotesChart.destroy();
+
+    const barWidth = 80;
+    const chartWidth = Math.max(labels.length * barWidth, 600);
+    chartEl.width = chartWidth;
+    chartEl.height = 280;
+
     examNotesChart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -548,13 +712,47 @@ async function loadNotesForClassAndMatiere() {
         }]
       },
       options: {
-        responsive: true,
+        responsive: false,
         maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true, max: 20 } },
-        plugins: { legend: { display: false } }
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const avg = context.parsed.y;
+                const emoji = avg >= 15 ? '🟢' : (avg >= 10 ? '🟡' : '🔴');
+                return `Moyenne : ${avg.toFixed(2)}/20 ${emoji}`;
+              },
+              title: function(tooltipItems) {
+                return tooltipItems[0].label;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 20,
+            ticks: { stepSize: 2 }
+          },
+          x: {
+            ticks: {
+              autoSkip: false,
+              maxRotation: 0,
+              minRotation: 0,
+              padding: 8
+            },
+            grid: {
+              display: false
+            }
+          }
+        }
       }
     });
 
+    // ✅ Charger la progression
+    loadProgressionChart(classeId, matiereId);
+    loadDistributionChart(classeId, matiereId, examenId, semestreId); // ✅ avec filtres
     document.getElementById('notes-detail-section').style.display = 'block';
 
   } catch (err) {
@@ -568,7 +766,6 @@ async function loadNotesForClassAndMatiere() {
 // === Chargement initial ===
 async function loadStats(){
   try {
-    // Ajoute la classe "loading"
     ['users-count', 'classes-count', 'notes-count', 'devoirs-count'].forEach(id => {
       document.getElementById(id).classList.add('loading');
     });
@@ -614,14 +811,54 @@ let matiereChart = null;
 async function loadMatiereChart(){
   try {
     const res = await fetchJSON('api.php?action=matiere_counts');
+    
+    const enrichedLabels = res.labels.map((label, i) => {
+      const avg = res.data[i];
+      let emoji = avg >= 15 ? '🟢' : (avg >= 10 ? '🟡' : '🔴');
+      return `${emoji} ${label}`;
+    });
+
     const ctx = document.getElementById('matiereChart').getContext('2d');
     if(matiereChart) matiereChart.destroy();
     matiereChart = new Chart(ctx, {
       type: 'bar',
-      data: { labels: res.labels, datasets: [{ label: 'Moyenne', data: res.data, backgroundColor: 'rgba(255,159,64,0.8)' }] },
-      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 20 } } }
+      data: {
+        labels: enrichedLabels,
+        datasets: [{
+          label: 'Moyenne',
+          data: res.data,
+          backgroundColor: 'rgba(255,159,64,0.8)',
+          borderColor: 'rgba(255,159,64,1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const avg = context.parsed.y;
+                const emoji = avg >= 15 ? '🟢' : (avg >= 10 ? '🟡' : '🔴');
+                return `Moyenne : ${avg}/20 ${emoji}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 20,
+            ticks: { stepSize: 2 }
+          }
+        }
+      }
     });
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error(e);
+  }
 }
 
 async function loadElevesTable(){
@@ -630,8 +867,14 @@ async function loadElevesTable(){
     const tbody = document.querySelector('#eleves-table tbody');
     tbody.innerHTML = '';
     res.forEach(u => {
+      const moyenne = parseFloat(u.moyenne) || 0;
+      const emoji = moyenne >= 15 ? '🟢' : (moyenne >= 10 ? '🟡' : '🔴');
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${u.Username}</td><td>${u.nom_de_classe || '—'}</td><td>${parseFloat(u.moyenne).toFixed(2)}</td>`;
+      tr.innerHTML = `
+        <td>${u.Username}</td>
+        <td>${u.nom_de_classe || '—'}</td>
+        <td>${moyenne.toFixed(2)} ${emoji}</td>
+      `;
       tbody.appendChild(tr);
     });
   } catch(e) { console.error(e); }
@@ -653,12 +896,149 @@ async function loadLastItems(classe = 0){
 
 document.getElementById('filter-classe').addEventListener('change', e => loadLastItems(e.target.value));
 
+async function loadAlertesPedagogiques() {
+  try {
+    const alertes = await fetchJSON('api.php?action=alertes_pedagogiques');
+    const tbody = document.getElementById('alertes-tbody');
+    
+    if (!alertes || alertes.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Aucune alerte</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = '';
+    alertes.forEach(a => {
+      const note = parseFloat(a.note);
+      const noteStr = `🔴 ${note.toFixed(1)}/20`;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${noteStr}</td>
+        <td>${a.Username} (${a.nom_de_classe || '—'})</td>
+        <td>${a.matiere || '—'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Erreur alertes:', err);
+    document.getElementById('alertes-tbody').innerHTML = 
+      `<tr><td colspan="3" class="text-center text-danger">❌ Erreur</td></tr>`;
+  }
+}
+async function loadResumeClasse(classeId) {
+  const container = document.getElementById('resume-classe');
+  const content = document.getElementById('resume-content');
+
+  if (!classeId) {
+    container.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await fetchJSON(`api.php?action=resume_classe&classe=${classeId}`);
+    
+    const moyenneEmoji = res.moyenne_generale >= 15 ? '🟢' : (res.moyenne_generale >= 10 ? '🟡' : '🔴');
+    const meilleureEmoji = res.meilleure_moyenne >= 15 ? '🟢' : (res.meilleure_moyenne >= 10 ? '🟡' : '🔴');
+
+    const items = [
+      `🏫 <strong>${res.nom_classe}</strong>`,
+      `👥 <strong>${res.nb_eleves}</strong> élève${res.nb_eleves > 1 ? 's' : ''}`,
+      `📊 Moy. <strong>${res.moyenne_generale}</strong> ${moyenneEmoji}`,
+      `📉 <strong>${res.nb_alertes}</strong> en alerte 🔴`,
+      `📈 Meilleure : <strong>${res.meilleure_matiere}</strong> (${res.meilleure_moyenne} ${meilleureEmoji})`
+    ];
+
+    content.innerHTML = items.map(item => `<div>${item}</div>`).join('');
+    container.style.display = 'block';
+
+  } catch (err) {
+    console.error('Erreur résumé classe:', err);
+    container.style.display = 'none';
+  }
+}
+let distributionChart = null;
+async function loadDistributionChart(classeId, matiereId, examenId = null, semestreId = null) {
+  const container = document.getElementById('distribution-chart-container');
+  const chartEl = document.getElementById('distribution-chart');
+
+  try {
+    const params = new URLSearchParams({
+      action: 'distribution_notes',
+      classe: classeId,
+      matiere: matiereId
+    });
+    if (examenId) params.append('examen', examenId);
+    if (semestreId) params.append('semestre', semestreId);
+
+    const tranches = await fetchJSON(`api.php?${params}`);
+    if (tranches.error) throw new Error(tranches.error);
+
+    const labels = tranches.map(t => t.label);
+    const data = tranches.map(t => t.count);
+    const colors = [
+      'rgba(220,53,69,0.8)',   // 🔴 0–5
+      'rgba(255,193,7,0.8)',   // 🟡 6–9
+      'rgba(25,135,84,0.8)',   // 🟢 10–14
+      'rgba(13,202,240,0.8)'   // 🟦 15–20
+    ];
+
+    const ctx = chartEl.getContext('2d');
+    if (distributionChart) distributionChart.destroy();
+
+    chartEl.width = 500;
+    chartEl.height = 200;
+
+    distributionChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Nombre de notes',
+          data,
+          backgroundColor: colors,
+          borderColor: colors.map(c => c.replace('0.8', '1')),
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return `${context.parsed.y} note${context.parsed.y !== 1 ? 's' : ''}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1 }
+          },
+          x: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+
+    container.style.display = 'block';
+
+  } catch (err) {
+    console.error('Erreur distribution:', err);
+    container.style.display = 'none';
+  }
+}
+
 // Lancement
 loadStats();
 loadClassChart();
 loadMatiereChart();
 loadElevesTable();
 loadLastItems();
+loadAlertesPedagogiques();
 </script>
 </body>
 </html>

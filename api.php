@@ -264,19 +264,42 @@ switch($action) {
 
       echo json_encode(array_values(array_unique($results)));
       exit;
-
-  default:
-      http_response_code(400);
-      echo json_encode(['error' => 'Action invalide']);
-      exit;
-// NOTES PAR EXAMEN (POUR PROGRESSION)
-case 'notes_par_examen':
-    $classe = (int)($_GET['classe'] ?? 0);
-    $matiere = (int)($_GET['matiere'] ?? 0);
+      case 'alertes_pedagogiques':
+      // Filtrer les notes <= 10 (ajustable si besoin)
+      $stmt = $conn->prepare("
+          SELECT 
+              l.Username,
+              c.nom_de_classe,
+              m.matiere,
+              n.note,
+              e.nom_examen
+          FROM note n
+          JOIN login l ON l.ID = n.ID_eleve
+          LEFT JOIN classes c ON c.ID = l.classe_id
+          LEFT JOIN matiere m ON m.ID_matiere = n.ID_matiere
+          LEFT JOIN examen e ON e.ID_examen = n.ID_exam
+          WHERE n.note <= ?
+          ORDER BY n.note ASC, l.Username
+          LIMIT 20
+      ");
+      $seuil = 10.0;
+      $stmt->bind_param("d", $seuil);
+      $stmt->execute();
+      $res = $stmt->get_result();
+      $alertes = [];
+      while ($row = $res->fetch_assoc()) {
+          $alertes[] = $row;
+      }
+      echo json_encode($alertes);
+      exit;  
+  case 'notes_par_examen':
+    $classe = requireInt($_GET['classe'] ?? null);
+    $matiere = requireInt($_GET['matiere'] ?? null);
     
-    if(!$classe || !$matiere) {
-        echo json_encode(['error' => 'classe et matiere requis']);
-        exit;
+    if ($classe === null || $matiere === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'Classe et matière requises']);
+      exit;
     }
 
     $stmt = $conn->prepare("
@@ -288,22 +311,173 @@ case 'notes_par_examen':
         JOIN login l ON l.ID = n.ID_eleve
         LEFT JOIN examen e ON e.ID_examen = n.ID_exam
         WHERE l.classe_id = ? AND n.ID_matiere = ?
-        GROUP BY e.ID_examen
+        GROUP BY e.ID_examen, e.nom_examen
         ORDER BY e.ID_examen
     ");
+    if (!$stmt) {
+      http_response_code(500);
+      echo json_encode(['error' => 'Erreur préparation SQL']);
+      exit;
+    }
     $stmt->bind_param("ii", $classe, $matiere);
     $stmt->execute();
     $res = $stmt->get_result();
     $rows = [];
     while($r = $res->fetch_assoc()) {
-        $rows[] = [
-            'nom_examen' => $r['nom_examen'] ?? 'Examen non défini',
-            'moyenne' => round((float)$r['moyenne'], 2),
-            'nb_notes' => (int)$r['nb_notes']
-        ];
+      $rows[] = [
+        'nom_examen' => $r['nom_examen'] ?? 'Examen non défini',
+        'moyenne' => round((float)$r['moyenne'], 2),
+        'nb_notes' => (int)$r['nb_notes']
+      ];
     }
     echo json_encode($rows);
-    exit; 
-         
+    exit;      
+  case 'resume_classe':
+    $classeId = requireInt($_GET['classe'] ?? null);
+    if ($classeId === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'Classe requise']);
+      exit;
+    }
+
+    // 1. Nom et nb élèves
+    $stmt = $conn->prepare("SELECT nom_de_classe FROM classes WHERE ID = ?");
+    $stmt->bind_param("i", $classeId);
+    $stmt->execute();
+    $nomClasse = $stmt->get_result()->fetch_assoc()['nom_de_classe'] ?? 'Inconnue';
+    $stmt->close();
+
+    $stmt = $conn->prepare("SELECT COUNT(*) as nb FROM login WHERE classe_id = ? AND role = 'eleve'");
+    $stmt->bind_param("i", $classeId);
+    $stmt->execute();
+    $nbEleves = (int)$stmt->get_result()->fetch_assoc()['nb'];
+    $stmt->close();
+
+    // 2. Moyenne générale de la classe
+    $stmt = $conn->prepare("
+      SELECT AVG(n.note) as moyenne
+      FROM note n
+      JOIN login l ON l.ID = n.ID_eleve
+      WHERE l.classe_id = ?
+    ");
+    $stmt->bind_param("i", $classeId);
+    $stmt->execute();
+    $moyenne = round((float)($stmt->get_result()->fetch_assoc()['moyenne'] ?? 0), 2);
+    $stmt->close();
+
+    // 3. Nombre d'élèves en alerte (moyenne < 10)
+    $stmt = $conn->prepare("
+      SELECT COUNT(*) as nb_alertes
+      FROM (
+        SELECT l.ID
+        FROM login l
+        LEFT JOIN note n ON n.ID_eleve = l.ID
+        WHERE l.classe_id = ? AND l.role = 'eleve'
+        GROUP BY l.ID
+        HAVING AVG(n.note) < 10
+      ) sub
+    ");
+    $stmt->bind_param("i", $classeId);
+    $stmt->execute();
+    $nbAlertes = (int)$stmt->get_result()->fetch_assoc()['nb_alertes'];
+    $stmt->close();
+
+    // 4. Meilleure matière
+    $stmt = $conn->prepare("
+      SELECT m.matiere, AVG(n.note) as moyenne
+      FROM note n
+      JOIN login l ON l.ID = n.ID_eleve
+      JOIN matiere m ON m.ID_matiere = n.ID_matiere
+      WHERE l.classe_id = ?
+      GROUP BY m.ID_matiere
+      ORDER BY moyenne DESC
+      LIMIT 1
+    ");
+    $stmt->bind_param("i", $classeId);
+    $stmt->execute();
+    $meilleure = $stmt->get_result()->fetch_assoc();
+    $meilleureMatiere = $meilleure ? $meilleure['matiere'] : '—';
+    $meilleureMoyenne = $meilleure ? round((float)$meilleure['moyenne'], 2) : 0;
+    $stmt->close();
+
+    echo json_encode([
+      'nom_classe' => $nomClasse,
+      'nb_eleves' => $nbEleves,
+      'moyenne_generale' => $moyenne,
+      'nb_alertes' => $nbAlertes,
+      'meilleure_matiere' => $meilleureMatiere,
+      'meilleure_moyenne' => $meilleureMoyenne
+    ]);
+    exit;
+    case 'distribution_notes':
+    $classe = requireInt($_GET['classe'] ?? null);
+    $matiere = requireInt($_GET['matiere'] ?? null);
+    $examen = requireInt($_GET['examen'] ?? null, 0);   // 0 = non requis
+    $semestre = requireInt($_GET['semestre'] ?? null, 0);
+
+    if ($classe === null || $matiere === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'Classe et matière requises']);
+      exit;
+    }
+
+    $sql = "
+      SELECT n.note
+      FROM note n
+      JOIN login l ON l.ID = n.ID_eleve
+      WHERE l.classe_id = ? AND n.ID_matiere = ?
+    ";
+    $params = [$classe, $matiere];
+    $types = "ii";
+
+    if ($examen !== null) {
+      $sql .= " AND n.ID_exam = ?";
+      $params[] = $examen;
+      $types .= "i";
+    }
+    if ($semestre !== null) {
+      $sql .= " AND n.ID_semestre = ?";
+      $params[] = $semestre;
+      $types .= "i";
+    }
+
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+      http_response_code(500);
+      echo json_encode(['error' => 'Erreur SQL']);
+      exit;
+    }
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $notes = [];
+    while ($row = $res->fetch_assoc()) {
+      $notes[] = (float)$row['note'];
+    }
+    $stmt->close();
+
+    // Tranches
+    $tranches = [
+      ['label' => '0–5', 'min' => 0, 'max' => 5, 'count' => 0],
+      ['label' => '6–9', 'min' => 6, 'max' => 9.999, 'count' => 0],
+      ['label' => '10–14', 'min' => 10, 'max' => 14.999, 'count' => 0],
+      ['label' => '15–20', 'min' => 15, 'max' => 20, 'count' => 0]
+    ];
+
+    foreach ($notes as $note) {
+      foreach ($tranches as &$t) {
+        if ($note >= $t['min'] && $note <= $t['max']) {
+          $t['count']++;
+          break;
+        }
+      }
+    }
+
+    echo json_encode($tranches);
+    exit;
+  default:
+      http_response_code(400);
+      echo json_encode(['error' => 'Action invalide']);
+      exit;
 }
 ?>
