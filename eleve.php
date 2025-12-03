@@ -360,3 +360,279 @@ loadStatutPedagogique();
 </script>
 </body>
 </html>
+<style>
+  :root {
+    --primary: #0E7770;
+    --primary-light: #1BD1C2;
+    --primary-dark: #0A5A55;
+    --success: #4CAF50;
+    --success-light: #E8F5E9;
+    --warning: #FF9800;
+    --warning-light: #FFF3E0;
+    --danger: #F44336;
+    --danger-light: #FFEBEE;
+    --info: #2196F3;
+    --info-light: #E3F2FD;
+    --purple: #9C27B0;
+    --gray-100: #f8f9fa;
+    --gray-200: #e9ecef;
+    --gray-700: #495057;
+    --gray-900: #212529;
+    --card-bg: white;
+    --shadow: 0 6px 16px rgba(0,0,0,0.08);
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--gray-900);
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+
+  /* ====== En-tête élève ====== */
+  .card-profile {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: white;
+    border-radius: 20px;
+    padding: 2.25rem 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-profile::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 100%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    transform: rotate(30deg);
+  }
+
+  .card-profile h1 {
+    font-weight: 800;
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  }
+
+  .card-profile h4 {
+    font-weight: 600;
+    opacity: 0.95;
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .card-profile .btn {
+    background: white;
+    color: var(--primary-dark);
+    font-weight: 700;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 50px;
+    transition: var(--transition);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 1rem;
+  }
+
+  .card-profile .btn:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    background: #f8f9fa;
+  }
+
+  /* ====== Cartes ====== */
+  .card {
+    background: var(--card-bg);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.75rem;
+    transition: var(--transition);
+    border: 1px solid rgba(0,0,0,0.03);
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+  }
+
+  .card-header {
+    background: linear-gradient(to right, var(--primary-light), var(--primary)) !important;
+    color: white !important;
+    border: none;
+    font-weight: 700;
+    padding: 1.1rem 1.35rem;
+    font-size: 1.2rem;
+    border-radius: 18px 18px 0 0 !important;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .card-header i {
+    font-size: 1.4rem;
+  }
+
+  .card-body {
+    padding: 1.35rem;
+  }
+
+  /* ====== Graphiques ====== */
+  .chart-container {
+    height: 250px;
+    width: 100%;
+    margin: 1rem 0;
+    position: relative;
+  }
+
+  /* ====== Tableau ====== */
+  .table {
+    margin-bottom: 0;
+    border-collapse: collapse;
+  }
+
+  .table th {
+    font-weight: 700;
+    color: var(--primary-dark);
+    background-color: rgba(14, 119, 112, 0.04);
+    padding: 0.75rem 0.85rem;
+    text-align: left;
+  }
+
+  .table td {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--gray-200);
+  }
+
+  .table tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* ====== Statut pédagogique ====== */
+  .alert-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.55rem 1.25rem;
+    border-radius: 50px;
+    font-weight: 700;
+    margin: 0.4rem;
+    font-size: 1.05rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+
+  .alert-danger-bg {
+    background: var(--danger-light);
+    color: var(--danger);
+  }
+
+  .alert-success-bg {
+    background: var(--success-light);
+    color: var(--success);
+  }
+
+  .stat-general {
+    background: var(--info-light);
+    color: var(--info);
+  }
+
+  #statut-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+  }
+
+  /* ====== Sélecteur matière ====== */
+  #matiere-select {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    border-radius: 12px;
+    border: 2px solid var(--gray-200);
+    background-color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    transition: var(--transition);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23495057' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 16px;
+    padding-right: 2.5rem;
+  }
+
+  #matiere-select:hover,
+  #matiere-select:focus {
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 3px rgba(14, 119, 112, 0.15);
+    outline: none;
+  }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 991px) {
+    .chart-container {
+      height: 230px;
+    }
+    .card-profile h1 {
+      font-size: 2rem;
+    }
+    .card-header {
+      font-size: 1.1rem;
+    }
+  }
+
+  @media(max-width: 767px) {
+    .container {
+      padding: 1rem;
+    }
+    .card-profile {
+      padding: 1.75rem 1rem;
+    }
+    .card-profile h1 {
+      font-size: 1.75rem;
+    }
+    .chart-container {
+      height: 210px;
+    }
+    #statut-body {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .alert-badge {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* ====== Loading ====== */
+  .spinner-border-sm {
+    width: 1.1rem;
+    height: 1.1rem;
+    border-width: 2px;
+  }
+
+  /* ====== Micro-interactions ====== */
+  canvas {
+    transition: opacity 0.2s ease;
+  }
+
+  canvas:hover {
+    opacity: 0.95;
+  }
+</style>

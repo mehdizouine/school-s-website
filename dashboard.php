@@ -14,298 +14,6 @@ require_role('admin');
 <title>Dashboard Analytics - <?=htmlspecialchars(SITE_NAME)?></title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-:root {
-  --primary: #0E7770;
-  --primary-light: #1BD1C2;
-  --primary-dark: #0A5A55;
-  --white: #ffffff;
-  --light: #f8f9fa;
-  --gray-100: #f1f3f5;
-  --gray-200: #e9ecef;
-  --gray-700: #495057;
-  --gray-900: #212529;
-  --card-bg: rgba(255, 255, 255, 0.85);
-  --card-border: rgba(255, 255, 255, 0.3);
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  padding: 1.25rem;
-  color: var(--gray-900);
-  line-height: 1.6;
-}
-
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* ====== Titre ====== */
-h1 {
-  color: var(--white);
-  font-weight: 800;
-  margin-bottom: 1.5rem;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
-  letter-spacing: -0.5px;
-}
-
-/* ====== Filtres ====== */
-.row.mb-4.g-2 {
-  background: var(--card-bg);
-  border-radius: 16px;
-  padding: 1.25rem;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--card-border);
-  margin-bottom: 1.75rem !important;
-}
-
-.row.mb-4.g-2 .form-label {
-  font-weight: 600;
-  margin-bottom: 0.4rem;
-  color: var(--gray-700);
-  font-size: 0.9rem;
-}
-
-.row.mb-4.g-2 select {
-  border: 1px solid var(--gray-200);
-  padding: 0.5rem 0.75rem;
-  border-radius: 10px;
-  background-color: var(--white);
-  transition: var(--transition);
-  font-size: 0.95rem;
-}
-
-.row.mb-4.g-2 select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(14, 119, 112, 0.12);
-}
-
-.row.mb-4.g-2 select:disabled {
-  background-color: var(--gray-100);
-  color: #adb5bd;
-  cursor: not-allowed;
-}
-
-/* ====== Cartes de stats ====== */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.25rem;
-  margin-bottom: 1.75rem !important;
-}
-
-.card-glass {
-  background: var(--card-bg);
-  border-radius: 16px;
-  padding: 1.25rem;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--card-border);
-  position: relative;
-  overflow: hidden;
-  backdrop-filter: blur(4px);
-  transition: var(--transition);
-}
-
-.card-glass:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.12);
-}
-
-.card-icon {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  font-size: 2rem;
-  color: rgba(14, 119, 112, 0.12);
-  z-index: 0;
-}
-
-.card-glass h6 {
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  color: var(--primary-dark);
-}
-
-/* ====== Chiffres clés ====== */
-.stat-value {
-  font-size: 2rem;
-  font-weight: 800;
-  margin: 0.5rem 0;
-  color: var(--primary-dark);
-  line-height: 1;
-  transition: color 0.3s ease;
-}
-
-.stat-value.loading {
-  color: var(--gray-700);
-}
-
-.stat-value.loaded {
-  color: var(--primary-dark);
-  animation: fadeInNumber 0.6s ease-out;
-}
-
-@keyframes fadeInNumber {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ====== Sections principales ====== */
-.row.g-3 .card-glass {
-  margin-bottom: 1.25rem !important;
-}
-
-.row.g-3 .card-glass h6 {
-  font-size: 1.15rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-  color: var(--primary-dark);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* ====== Graphiques ====== */
-.chart-container {
-  position: relative;
-  height: 220px;
-  width: 100%;
-  margin: 1.1rem 0;
-}
-
-#notes-detail-section .chart-container {
-  height: 280px;
-}
-
-/* ====== Tableaux ====== */
-.table-responsive {
-  max-height: 400px;
-  overflow: auto;
-  margin-top: 0.75rem;
-}
-
-.table th {
-  font-weight: 700;
-  background-color: rgba(14, 119, 112, 0.03);
-  color: var(--primary-dark);
-  border-color: var(--gray-200);
-  padding: 0.6rem 0.75rem;
-}
-
-.table td {
-  border-color: var(--gray-200);
-  padding: 0.6rem 0.75rem;
-  font-size: 0.95rem;
-}
-
-/* ====== Loading ====== */
-#loading-msg {
-  display: none;
-  text-align: center;
-  margin: 1rem 0;
-  color: var(--primary);
-  font-weight: 600;
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.spinner {
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(14, 119, 112, 0.3);
-  border-top: 2px solid var(--primary);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ====== Graphiques avec scroll horizontal ====== */
-.chart-container-scrollable {
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 10px;
-  margin: 1.1rem 0;
-}
-
-.chart-wrapper {
-  min-width: 100%;
-  display: inline-block;
-}
-
-/* ====== Responsive ====== */
-@media (max-width: 1199px) {
-  .grid {
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  }
-}
-
-@media (max-width: 991px) {
-  body {
-    padding: 1rem;
-  }
-  
-  .grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .chart-container {
-    height: 240px;
-  }
-  
-  #notes-detail-section .chart-container {
-    height: 300px;
-  }
-}
-
-@media (max-width: 767px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .row.mb-4.g-2 {
-    padding: 1rem;
-  }
-  
-  .chart-container {
-    height: 260px;
-  }
-  
-  #notes-detail-section .chart-container {
-    height: 320px;
-  }
-}
-
-/* ====== Micro-interactions ====== */
-select.form-select:not(:disabled):hover {
-  border-color: #86c8bc;
-}
-</style>
 </head>
 <body>
 <div class="container">
@@ -438,8 +146,10 @@ select.form-select:not(:disabled):hover {
           </select>
         </div>
       </div>
-      <div class="chart-container" id="comparison-chart-container" style="height:250px;">
-        <canvas id="comparison-chart"></canvas>
+      <div class="chart-container-scrollable">
+        <div class="chart-wrapper">
+          <canvas id="comparison-chart"></canvas>
+        </div>
       </div>
     </div>
 
@@ -1061,21 +771,16 @@ async function loadDistributionChart(classeId, matiereId, examenId = null, semes
     container.style.display = 'none';
   }
 }
-
 let comparisonChart = null;
-async function loadComparisonChart() {
-  const canvas = document.getElementById('comparison-chart');
-  if (!canvas) {
-    console.warn('Canvas #comparison-chart non trouvé. Action ignorée.');
-    return;
-  }
 
+async function loadComparisonChart() {
   const c1 = document.getElementById('compare-classe1')?.value;
   const c2 = document.getElementById('compare-classe2')?.value;
-  const container = document.getElementById('comparison-chart-container');
+  if (!c1 || !c2) return;
 
-  if (!c1 || !c2) {
-    if (container) container.innerHTML = '<div class="text-center text-muted mt-3">Sélectionnez deux classes</div>';
+  const canvas = document.getElementById('comparison-chart');
+  if (!canvas) {
+    console.warn('Canvas #comparison-chart absent du DOM');
     return;
   }
 
@@ -1083,9 +788,14 @@ async function loadComparisonChart() {
     const res = await fetchJSON(`api.php?action=comparaison_classes&classe1=${c1}&classe2=${c2}`);
     if (res.error) throw new Error(res.error);
 
-    const ctx = canvas.getContext('2d');
     if (comparisonChart) comparisonChart.destroy();
 
+    const barWidth = 90;
+    const chartWidth = Math.max(res.labels.length * barWidth, 500);
+    canvas.width = chartWidth;
+    canvas.height = 250;
+
+    const ctx = canvas.getContext('2d');
     comparisonChart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -1108,26 +818,27 @@ async function loadComparisonChart() {
         ]
       },
       options: {
-        responsive: true,
+        responsive: false,
         maintainAspectRatio: false,
         scales: {
-          y: {
-            beginAtZero: true,
-            max: 20,
-            ticks: { stepSize: 2 }
+          y: { beginAtZero: true, max: 20, ticks: { stepSize: 2 } },
+          x: {
+            ticks: { autoSkip: false, maxRotation: 0, minRotation: 0 }
           }
         },
-        plugins: {
-          legend: { position: 'top' }
-        }
+        plugins: { legend: { position: 'top' } }
       }
     });
 
+    // ✅ Plus besoin de gérer `container.style.display`
+
   } catch (err) {
-    if (container) {
-      container.innerHTML = `<div class="text-center text-danger mt-3">❌ ${err.message || 'Erreur'}</div>`;
-    }
     console.error('Erreur comparaison:', err);
+    // Optionnel : afficher une erreur dans le scrollable
+    const parent = canvas.closest('.chart-container-scrollable');
+    if (parent) {
+      parent.innerHTML = `<div class="text-center text-danger py-3">❌ ${err.message || 'Erreur'}</div>`;
+    }
   }
 }
 
@@ -1138,6 +849,44 @@ document.getElementById('compare-classe2').addEventListener('change', loadCompar
 // ✅ Réinitialiser pour éviter le déclenchement automatique
 document.getElementById('compare-classe1').value = '';
 document.getElementById('compare-classe2').value = '';
+function loadSubjects() {
+    fetch("api.php?action=getSubjects")
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById("matiereSelect");
+            select.innerHTML = `<option value="">-- Sélectionner matière --</option>`;
+
+            data.data.forEach(m => {
+                select.innerHTML += `<option value="${m.id}">${m.nom}</option>`;
+            });
+        })
+        .catch(err => console.error("Erreur getSubjects:", err));
+}
+
+
+// =========================
+// Charger examens dépendants
+// =========================
+function loadExams(subjectId) {
+    const examSelect = document.getElementById("examSelect");
+
+    if (!subjectId) {
+        examSelect.innerHTML = `<option value="">-- Sélectionner examen --</option>`;
+        return;
+    }
+
+    fetch("api.php?action=getExams&subject_id=" + subjectId)
+        .then(res => res.json())
+        .then(data => {
+            examSelect.innerHTML = `<option value="">-- Sélectionner examen --</option>`;
+
+            data.data.forEach(x => {
+                examSelect.innerHTML += `<option value="${x.id}">${x.titre}</option>`;
+            });
+        })
+        .catch(err => console.error("Erreur getExams:", err));
+}
+// Écouter les changements (seulement)
 
 // Lancement
 loadStats();
@@ -1146,8 +895,313 @@ loadMatiereChart();
 loadElevesTable();
 loadLastItems();
 loadAlertesPedagogiques();
-
 });
 </script>
 </body>
 </html>
+<style>
+:root {
+  --primary: #0E7770;
+  --primary-light: #1BD1C2;
+  --primary-dark: #0A5A55;
+  --white: #ffffff;
+  --light: #f8f9fa;
+  --gray-100: #f1f3f5;
+  --gray-200: #e9ecef;
+  --gray-700: #495057;
+  --gray-900: #212529;
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --card-border: rgba(255, 255, 255, 0.3);
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  padding: 1.25rem;
+  color: var(--gray-900);
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ====== Titre ====== */
+h1 {
+  color: var(--white);
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  letter-spacing: -0.5px;
+}
+
+/* ====== Filtres ====== */
+.row.mb-4.g-2 {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--card-border);
+  margin-bottom: 1.75rem !important;
+}
+
+.row.mb-4.g-2 .form-label {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--gray-700);
+  font-size: 0.9rem;
+}
+
+.row.mb-4.g-2 select {
+  border: 1px solid var(--gray-200);
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  background-color: var(--white);
+  transition: var(--transition);
+  font-size: 0.95rem;
+}
+
+.row.mb-4.g-2 select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(14, 119, 112, 0.12);
+}
+
+.row.mb-4.g-2 select:disabled {
+  background-color: var(--gray-100);
+  color: #adb5bd;
+  cursor: not-allowed;
+}
+
+/* ====== Cartes de stats ====== */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.75rem !important;
+}
+
+.card-glass {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--card-border);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  transition: var(--transition);
+}
+
+.card-glass:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.12);
+}
+
+.card-icon {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 2rem;
+  color: rgba(14, 119, 112, 0.12);
+  z-index: 0;
+}
+
+.card-glass h6 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--primary-dark);
+}
+
+/* ====== Chiffres clés ====== */
+.stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0.5rem 0;
+  color: var(--primary-dark);
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+.stat-value.loading {
+  color: var(--gray-700);
+}
+
+.stat-value.loaded {
+  color: var(--primary-dark);
+  animation: fadeInNumber 0.6s ease-out;
+}
+
+@keyframes fadeInNumber {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ====== Sections principales ====== */
+.row.g-3 .card-glass {
+  margin-bottom: 1.25rem !important;
+}
+
+.row.g-3 .card-glass h6 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--primary-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ====== Graphiques ====== */
+.chart-container {
+  position: relative;
+  height: 220px;
+  width: 100%;
+  margin: 1.1rem 0;
+}
+
+#notes-detail-section .chart-container {
+  height: 280px;
+}
+
+/* ====== Tableaux ====== */
+.table-responsive {
+  max-height: 400px;
+  overflow: auto;
+  margin-top: 0.75rem;
+}
+
+.table th {
+  font-weight: 700;
+  background-color: rgba(14, 119, 112, 0.03);
+  color: var(--primary-dark);
+  border-color: var(--gray-200);
+  padding: 0.6rem 0.75rem;
+}
+
+.table td {
+  border-color: var(--gray-200);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+}
+
+/* ====== Loading ====== */
+#loading-msg {
+  display: none;
+  text-align: center;
+  margin: 1rem 0;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(14, 119, 112, 0.3);
+  border-top: 2px solid var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ====== Graphiques avec scroll horizontal ====== */
+.chart-container-scrollable {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+  margin: 1.1rem 0;
+}
+
+.chart-wrapper {
+  min-width: 100%;
+  display: inline-block;
+}
+
+/* ====== Responsive ====== */
+@media (max-width: 1199px) {
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+}
+
+@media (max-width: 991px) {
+  body {
+    padding: 1rem;
+  }
+  
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .chart-container {
+    height: 240px;
+  }
+  
+  #notes-detail-section .chart-container {
+    height: 300px;
+  }
+}
+
+@media (max-width: 767px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .row.mb-4.g-2 {
+    padding: 1rem;
+  }
+  
+  .chart-container {
+    height: 260px;
+  }
+  
+  #notes-detail-section .chart-container {
+    height: 320px;
+  }
+}
+
+/* ====== Micro-interactions ====== */
+select.form-select:not(:disabled):hover {
+  border-color: #86c8bc;
+}
+/* ====== Graphiques avec scroll horizontal ====== */
+.chart-container-scrollable {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 12px;
+  margin: 1.2rem 0;
+  -webkit-overflow-scrolling: touch; /* smooth scroll sur mobile */
+}
+
+.chart-wrapper {
+  min-width: 100%;
+  display: inline-block;
+}
+</style>
