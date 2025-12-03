@@ -22,7 +22,16 @@ function requireInt($value, $min = 1) {
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-
+// Fonction utilitaire : obtenir le nom d'une classe
+function getClasseNom($conn, $id) {
+    $stmt = $conn->prepare("SELECT nom_de_classe FROM classes WHERE ID = ?");
+    if (!$stmt) return "Classe $id";
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $r = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $r ? $r['nom_de_classe'] : "Classe $id";
+}
 switch($action) {
 
   case 'stats':
@@ -53,22 +62,50 @@ switch($action) {
       }
       echo json_encode(['labels' => $labels, 'data' => $data]);
       exit;
-
   case 'matiere_counts':
-      $res = $conn->query("
-          SELECT m.matiere, AVG(n.note) as moyenne
-          FROM matiere m
-          LEFT JOIN note n ON n.ID_matiere = m.ID_matiere
-          GROUP BY m.ID_matiere
-          ORDER BY m.matiere
-      ");
-      $labels = []; $data = [];
-      while($r = $res->fetch_assoc()){
-          $labels[] = $r['matiere'] ?? 'Inconnu';
-          $data[] = round((float)($r['moyenne'] ?? 0), 2);
-      }
-      echo json_encode(['labels' => $labels, 'data' => $data]);
-      exit;
+    $res = $conn->query("
+      SELECT 
+        m.ID_matiere,
+        m.matiere,
+        AVG(n.note) as moyenne,
+        COUNT(n.note) as total_notes,
+        SUM(CASE WHEN n.note >= 15 THEN 1 ELSE 0 END) as notes_hautes,
+        SUM(CASE WHEN n.note < 10 THEN 1 ELSE 0 END) as notes_basses
+      FROM matiere m
+      LEFT JOIN note n ON n.ID_matiere = m.ID_matiere
+      GROUP BY m.ID_matiere
+      ORDER BY m.matiere
+    ");
+    $labels = []; 
+    $data = [];
+    $stats = []; // ← nouvelles stats
+    while($r = $res->fetch_assoc()){
+      $matiere = $r['matiere'] ?? 'Inconnu';
+      $moyenne = round((float)($r['moyenne'] ?? 0), 2);
+      $total = (int)($r['total_notes'] ?? 0);
+      $hautes = (int)($r['notes_hautes'] ?? 0);
+      $basses = (int)($r['notes_basses'] ?? 0);
+      
+      // Emoji selon la moyenne
+      $emoji = $moyenne >= 15 ? '🟢' : ($moyenne >= 10 ? '🟡' : '🔴');
+      
+      // Label compact (optionnel)
+      $labels[] = "{$emoji} {$matiere}";
+      
+      $data[] = $moyenne;
+      
+      // Sauvegarder les stats pour le tooltip
+      $stats[] = [
+        'matiere' => $matiere,
+        'total' => $total,
+        'hautes' => $hautes,
+        'basses' => $basses,
+        'pct_hautes' => $total > 0 ? round(100 * $hautes / $total, 1) : 0,
+        'pct_basses' => $total > 0 ? round(100 * $basses / $total, 1) : 0
+      ];
+    }
+    echo json_encode(['labels' => $labels, 'data' => $data, 'stats' => $stats]);
+    exit;
 
   case 'eleves_moyenne':
       $res = $conn->query("
@@ -474,6 +511,199 @@ switch($action) {
     }
 
     echo json_encode($tranches);
+    exit;
+      case 'comparaison_classes':
+    $classe1 = requireInt($_GET['classe1'] ?? null);
+    $classe2 = requireInt($_GET['classe2'] ?? null);
+    if ($classe1 === null || $classe2 === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'Deux classes requises']);
+      exit;
+    }
+
+    // Liste de toutes les matières
+    $matStmt = $conn->query("SELECT ID_matiere, matiere FROM matiere ORDER BY matiere");
+    $matieres = [];
+    while ($m = $matStmt->fetch_assoc()) {
+      $matieres[$m['ID_matiere']] = $m['matiere'];
+    }
+
+    // Moyennes pour classe 1
+    $stmt1 = $conn->prepare("
+      SELECT m.ID_matiere, m.matiere, AVG(n.note) as moyenne
+      FROM matiere m
+      LEFT JOIN note n ON n.ID_matiere = m.ID_matiere
+      LEFT JOIN login l ON l.ID = n.ID_eleve
+      WHERE (l.classe_id = ? OR n.ID_eleve IS NULL)
+      GROUP BY m.ID_matiere
+      ORDER BY m.matiere
+    ");
+    $stmt1->bind_param("i", $classe1);
+    $stmt1->execute();
+    $res1 = $stmt1->get_result();
+    $moyennes1 = [];
+    while ($r = $res1->fetch_assoc()) {
+      $moyennes1[$r['ID_matiere']] = round((float)$r['moyenne'], 2);
+    }
+    $stmt1->close();
+
+    // Moyennes pour classe 2
+    $stmt2 = $conn->prepare("
+      SELECT m.ID_matiere, AVG(n.note) as moyenne
+      FROM matiere m
+      LEFT JOIN note n ON n.ID_matiere = m.ID_matiere
+      LEFT JOIN login l ON l.ID = n.ID_eleve
+      WHERE (l.classe_id = ? OR n.ID_eleve IS NULL)
+      GROUP BY m.ID_matiere
+    ");
+    $stmt2->bind_param("i", $classe2);
+    $stmt2->execute();
+    $res2 = $stmt2->get_result();
+    $moyennes2 = [];
+    while ($r = $res2->fetch_assoc()) {
+      $moyennes2[$r['ID_matiere']] = round((float)$r['moyenne'], 2);
+    }
+    $stmt2->close();
+
+    // Aligner les données
+    $labels = [];
+    $data1 = [];
+    $data2 = [];
+    foreach ($matieres as $id => $nom) {
+      $labels[] = $nom;
+      $data1[] = $moyennes1[$id] ?? 0;
+      $data2[] = $moyennes2[$id] ?? 0;
+    }
+
+    echo json_encode([
+      'labels' => $labels,
+      'classe1' => ['nom' => getClasseNom($conn, $classe1), 'data' => $data1],
+      'classe2' => ['nom' => getClasseNom($conn, $classe2), 'data' => $data2]
+    ]);
+    exit;
+    // Moyennes par matière pour un élève
+  case 'eleve_moyennes_matiere':
+    $eleveId = requireInt($_GET['eleve_id'] ?? null);
+    if ($eleveId === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'ID élève requis']);
+      exit;
+    }
+    $stmt = $conn->prepare("
+      SELECT m.ID_matiere, m.matiere, AVG(n.note) as moyenne
+      FROM note n
+      JOIN matiere m ON m.ID_matiere = n.ID_matiere
+      WHERE n.ID_eleve = ?
+      GROUP BY m.ID_matiere
+      ORDER BY m.matiere
+    ");
+    $stmt->bind_param("i", $eleveId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $rows = [];
+    while($r = $res->fetch_assoc()) {
+      $rows[] = [
+        'ID_matiere' => (int)$r['ID_matiere'], // ✅ Important
+        'matiere' => $r['matiere'],
+        'moyenne' => (float)$r['moyenne']
+      ];
+    }
+    echo json_encode($rows);
+    exit;
+
+  // Dernières notes de l'élève
+  case 'eleve_dernieres_notes':
+    $eleveId = requireInt($_GET['eleve_id'] ?? null);
+    if ($eleveId === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'ID élève requis']);
+      exit;
+    }
+    $stmt = $conn->prepare("
+      SELECT m.matiere, n.note, e.nom_examen
+      FROM note n
+      LEFT JOIN matiere m ON m.ID_matiere = n.ID_matiere
+      LEFT JOIN examen e ON e.ID_examen = n.ID_exam
+      WHERE n.ID_eleve = ?
+      ORDER BY n.ID_note DESC
+      LIMIT 10
+    ");
+    $stmt->bind_param("i", $eleveId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $rows = [];
+    while($r = $res->fetch_assoc()) {
+      $rows[] = $r;
+    }
+    echo json_encode($rows);
+    exit;
+
+  // Statut pédagogique global de l'élève
+  case 'eleve_statut':
+    $eleveId = requireInt($_GET['eleve_id'] ?? null);
+    if ($eleveId === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'ID élève requis']);
+      exit;
+    }
+
+    // Moyenne générale
+    $stmt = $conn->prepare("SELECT AVG(note) as moy FROM note WHERE ID_eleve = ?");
+    $stmt->bind_param("i", $eleveId);
+    $stmt->execute();
+    $moyGen = (float)($stmt->get_result()->fetch_assoc()['moy'] ?? 0);
+
+    // Compter les matières en alerte (<10) et excellentes (≥15)
+    $stmt = $conn->prepare("
+      SELECT 
+        SUM(CASE WHEN avg_moy < 10 THEN 1 ELSE 0 END) as alertes,
+        SUM(CASE WHEN avg_moy >= 15 THEN 1 ELSE 0 END) as excellentes
+      FROM (
+        SELECT AVG(n.note) as avg_moy
+        FROM note n
+        WHERE n.ID_eleve = ?
+        GROUP BY n.ID_matiere
+      ) sub
+    ");
+    $stmt->bind_param("i", $eleveId);
+    $stmt->execute();
+    $counts = $stmt->get_result()->fetch_assoc();
+    $alertes = (int)($counts['alertes'] ?? 0);
+    $excellentes = (int)($counts['excellentes'] ?? 0);
+
+    echo json_encode([
+      'moyenne_generale' => $moyGen,
+      'nb_alertes' => $alertes,
+      'nb_excellentes' => $excellentes
+    ]);
+    exit;  
+      case 'eleve_evolution_matiere':
+    $eleveId = requireInt($_GET['eleve_id'] ?? null);
+    $matiereId = requireInt($_GET['matiere_id'] ?? null);
+    if ($eleveId === null || $matiereId === null) {
+      http_response_code(400);
+      echo json_encode(['error' => 'ID élève et matière requis']);
+      exit;
+    }
+
+    $stmt = $conn->prepare("
+      SELECT 
+        n.note, 
+        e.nom_examen,
+        COALESCE(e.nom_examen, CONCAT('Note ', n.ID_note)) as label
+      FROM note n
+      LEFT JOIN examen e ON e.ID_examen = n.ID_exam
+      WHERE n.ID_eleve = ? AND n.ID_matiere = ?
+      ORDER BY n.ID_exam, n.ID_note
+    ");
+    $stmt->bind_param("ii", $eleveId, $matiereId);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $rows = [];
+    while($r = $res->fetch_assoc()) {
+      $rows[] = $r;
+    }
+    echo json_encode($rows);
     exit;
   default:
       http_response_code(400);

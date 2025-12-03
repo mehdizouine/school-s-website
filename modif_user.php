@@ -15,17 +15,17 @@ while($c = $classesList->fetch_assoc()){
 
 // Ajouter ou modifier un utilisateur
 if(isset($_POST['save_user'])) {
-    $id = $_POST['id'] ?? '';
-    $username = $_POST['username'];
-    $password = $_POST['password'];
-    $role = $_POST['role'];
+    $id = !empty($_POST['id']) ? intval($_POST['id']) : null;
+    $username = $_POST['username'] ?? '';
+    $password = $_POST['password'] ?? '';
+    $role = $_POST['role'] ?? '';
     $classe_ids = $_POST['classe_id'] ?? [];
 
     // Hasher le mot de passe uniquement si rempli
     $hashedPassword = !empty($password) ? password_hash($password, PASSWORD_DEFAULT) : null;
 
     if($id) {
-        // Update user
+        // Si on passe d'un rôle prof, supprimer d'abord ses anciennes liaisons
         if($role == 'prof') {
             $stmt = $conn->prepare("DELETE FROM prof_classes WHERE prof_id=?");
             $stmt->bind_param("i", $id);
@@ -33,23 +33,40 @@ if(isset($_POST['save_user'])) {
             $stmt->close();
         }
 
-        // Si le mot de passe est vide → ne pas le modifier
+        // Si le mot de passe est rempli → on met à jour le hash aussi
         if(!empty($password)) {
-            $sql = "UPDATE login SET Username=?, Password_hash=?, role=? WHERE ID=?";
+            $sql = "UPDATE login SET Username = ?, Password_hash = ?, role = ?, classe_id = ? WHERE ID = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sssi", $username, $hashedPassword, $role, $id);
+            // Pour les rôles 'prof' on va mettre NULL dans la colonne classe_id (les classes sont dans prof_classes)
+            $classe_id_single = ($role != 'prof') ? (int)($classe_ids[0] ?? 0) : null;
+            // Bind: s = username, s = password hash, s = role, i = classe_id (nullable), i = ID
+            // Pour les valeurs NULL, bind_param attend une variable — on gère avec null casté en null_value
+            if ($classe_id_single === null) {
+                // MySQLi ne prend pas le type 'n' pour null; on envoie 0 et ensuite on peut UPDATE ... OR NULL logic is simpler:
+                // Ici on enverra 0 et puis dans la requête on pourrait setter NULL si 0 — mais pour simplicité, on accepte 0 = pas de classe.
+                $classe_id_single = 0;
+            }
+            $stmt->bind_param("sssii", $username, $hashedPassword, $role, $classe_id_single, $id);
         } else {
-            $sql = "UPDATE login SET Username=?, role=? WHERE ID=?";
+            // Ne pas modifier le mot de passe
+            $sql = "UPDATE login SET Username = ?, role = ?, classe_id = ? WHERE ID = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("ssi", $username, $role, $id);
+            $classe_id_single = ($role != 'prof') ? (int)($classe_ids[0] ?? 0) : 0;
+            $stmt->bind_param("ssii", $username, $role, $classe_id_single, $id);
         }
 
         $stmt->execute();
         $stmt->close();
 
     } else {
-        // Add user
-        $classe_id_single = ($role != 'prof') ? ($classe_ids[0] ?? null) : null;
+        // Add user - pour création, on exige idéalement un mot de passe
+        if(empty($password)) {
+            // Optionnel : tu peux forcer la création d'un mot de passe
+            // Ici je renvoie simplement une erreur simple (tu peux remplacer par gestion d'erreur UI)
+            die("Erreur : mot de passe requis pour créer un utilisateur.");
+        }
+
+        $classe_id_single = ($role != 'prof') ? (int)($classe_ids[0] ?? 0) : 0;
         $sql = "INSERT INTO login (Username, Password_hash, role, classe_id) VALUES (?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("sssi", $username, $hashedPassword, $role, $classe_id_single);
@@ -59,27 +76,28 @@ if(isset($_POST['save_user'])) {
     }
 
     // Enregistrer classes multiples pour prof
-    if($role == 'prof' && !empty($classe_ids)) {
+    if($role == 'prof' && !empty($classe_ids) && $id) {
         $stmt = $conn->prepare("INSERT INTO prof_classes (prof_id, classe_id) VALUES (?, ?)");
         foreach($classe_ids as $cid) {
-            $stmt->bind_param("ii", $id, $cid);
+            $cid_i = (int)$cid;
+            $stmt->bind_param("ii", $id, $cid_i);
             $stmt->execute();
         }
         $stmt->close();
     }
 
-    header("Location: modif-user.php");
+    header("Location: modif_user.php");
     exit;
 }
 
 // Supprimer utilisateur
 if(isset($_GET['delete'])) {
-    $id = $_GET['delete'];
+    $id = intval($_GET['delete']);
     $stmt = $conn->prepare("DELETE FROM login WHERE ID=?");
     $stmt->bind_param("i",$id);
     $stmt->execute();
     $stmt->close();
-    header("Location: modif-user.php");
+    header("Location: modif_user.php");
     exit;
 }
 
@@ -122,7 +140,7 @@ function getProfClasses($conn, $prof_id){
                 <input type="text" name="username" id="username" class="form-control" placeholder="Nom d’utilisateur" required>
             </div>
             <div class="col-md-3">
-                <input type="text" name="password" id="password" class="form-control" placeholder="Mot de passe">
+                <input type="password" name="password" id="password" class="form-control" placeholder="Mot de passe">
             </div>
             <div class="col-md-2">
                 <select name="role" id="role" class="form-select" required>
@@ -133,9 +151,10 @@ function getProfClasses($conn, $prof_id){
                 </select>
             </div>
             <div class="col-md-4">
+                <!-- on laisse multiple mais on l'activera via JS si besoin -->
                 <select name="classe_id[]" id="classe_id" class="form-select" multiple style="display:none;">
-                    <?php foreach($classes as $id => $nom): ?>
-                        <option value="<?= $id ?>"><?= htmlspecialchars($nom) ?></option>
+                    <?php foreach($classes as $idc => $nom): ?>
+                        <option value="<?= $idc ?>"><?= htmlspecialchars($nom) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -165,7 +184,7 @@ function getProfClasses($conn, $prof_id){
                 <tbody>
                 <?php while($row = $result->fetch_assoc()): ?>
                     <tr>
-                        <td><?= $row['ID'] ?></td>
+                        <td><?= (int)$row['ID'] ?></td>
                         <td><?= htmlspecialchars($row['Username']) ?></td>
                         <td>********</td>
                         <td><span class="badge bg-info"><?= htmlspecialchars($row['role']) ?></span></td>
@@ -175,24 +194,24 @@ function getProfClasses($conn, $prof_id){
                                 $classIds = getProfClasses($conn,$row['ID']);
                                 $classNames = [];
                                 foreach($classIds as $cid) $classNames[] = $classes[$cid] ?? '';
-                                echo implode(", ", $classNames);
+                                echo htmlspecialchars(implode(", ", $classNames));
                             } else {
-                                echo $classes[$row['classe_id']] ?? '-';
+                                echo htmlspecialchars($classes[$row['classe_id']] ?? '-');
                             }
                         ?>
                         </td>
                         <td>
                             <button class="btn btn-warning btn-sm"
-                                onclick="editUser(
-                                    <?= $row['ID'] ?>,
-                                    '<?= addslashes($row['Username']) ?>',
-                                    '',
-                                    '<?= $row['role'] ?>',
-                                    <?= $row['role']=='prof' ? '['.implode(',', getProfClasses($conn,$row['ID'])).']' : ($row['classe_id'] ?? 'null') ?>
-                                )">
+                                onclick='editUser(
+                                    <?= (int)$row['ID'] ?>,
+                                    <?= json_encode($row['Username']) ?>,
+                                    "",
+                                    <?= json_encode($row['role']) ?>,
+                                    <?= ($row['role']=='prof' ? json_encode(getProfClasses($conn,$row['ID'])) : json_encode((int)($row['classe_id'] ?? 0))) ?>
+                                )'>
                                 <i class="bi bi-pencil-square"></i>
                             </button>
-                            <a href="modif-user.php?delete=<?= $row['ID'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer cet utilisateur ?')">
+                            <a href="modif-user.php?delete=<?= (int)$row['ID'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Supprimer cet utilisateur ?')">
                                 <i class="bi bi-trash"></i>
                             </a>
                         </td>
@@ -208,39 +227,56 @@ function getProfClasses($conn, $prof_id){
 const roleSelect = document.getElementById('role');
 const classeSelect = document.getElementById('classe_id');
 
-roleSelect.addEventListener('change', function() {
-    const isProf = this.value === 'prof';
-    classeSelect.style.display = 'block';
+function updateClasseUI() {
+    const isProf = roleSelect.value === 'prof';
     if(isProf){
+        classeSelect.style.display = 'block';
         classeSelect.setAttribute('multiple','multiple');
     } else {
+        // si élève ou admin, on affiche aussi le select (single) — si tu veux le cacher pour admin, change ici
+        classeSelect.style.display = 'block';
         classeSelect.removeAttribute('multiple');
     }
-});
+}
+
+// initial UI
+updateClasseUI();
+
+roleSelect.addEventListener('change', updateClasseUI);
 
 function editUser(id, username, password, role, classe_ids){
     document.getElementById('id').value = id;
     document.getElementById('username').value = username;
-    document.getElementById('password').value = password;
+    document.getElementById('password').value = ''; // toujours vide pour sécurité
     document.getElementById('role').value = role;
 
+    // reset options
     Array.from(classeSelect.options).forEach(opt => opt.selected = false);
 
     if(role === 'prof') {
-        classe_ids.forEach(cid => {
-            const opt = Array.from(classeSelect.options).find(o => o.value==cid);
-            if(opt) opt.selected = true;
-        });
+        // classe_ids est un tableau
+        if(Array.isArray(classe_ids)) {
+            classe_ids.forEach(cid => {
+                const opt = Array.from(classeSelect.options).find(o => o.value==cid);
+                if(opt) opt.selected = true;
+            });
+        }
     } else {
-        classeSelect.value = classe_ids;
+        // classe_ids est un entier (0 si none)
+        if(classe_ids && classe_ids != 0) {
+            const opt = Array.from(classeSelect.options).find(o => o.value==classe_ids);
+            if(opt) opt.selected = true;
+        }
     }
 
+    updateClasseUI();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 </script>
 
 </body>
 </html>
+
 
 <style>
 /* Enhanced User Management System CSS - Light Teal Theme */

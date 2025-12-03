@@ -412,6 +412,36 @@ select.form-select:not(:disabled):hover {
         </table>
       </div>
     </div>
+    <div class="card-glass mb-3">
+      <h6>🆚 Comparaison de classes</h6>
+      <div class="row g-2 mb-2">
+        <div class="col-6">
+          <select id="compare-classe1" class="form-select form-select-sm">
+            <option value="">Classe 1</option>
+            <?php
+              $r = $conn->query("SELECT ID, nom_de_classe FROM classes ORDER BY nom_de_classe");
+              while($c = $r->fetch_assoc()) {
+                echo "<option value=\"{$c['ID']}\">".htmlspecialchars($c['nom_de_classe'])."</option>";
+              }
+            ?>
+          </select>
+        </div>
+        <div class="col-6">
+          <select id="compare-classe2" class="form-select form-select-sm">
+            <option value="">Classe 2</option>
+            <?php
+              $r = $conn->query("SELECT ID, nom_de_classe FROM classes ORDER BY nom_de_classe");
+              while($c = $r->fetch_assoc()) {
+                echo "<option value=\"{$c['ID']}\">".htmlspecialchars($c['nom_de_classe'])."</option>";
+              }
+            ?>
+          </select>
+        </div>
+      </div>
+      <div class="chart-container" id="comparison-chart-container" style="height:250px;">
+        <canvas id="comparison-chart"></canvas>
+      </div>
+    </div>
 
     <!-- Section détaillée -->
     <div class="card-glass mb-3" id="notes-detail-section" style="display:none">
@@ -491,6 +521,9 @@ select.form-select:not(:disabled):hover {
 </div>
 
 <script>
+// ✅ Tout le code est maintenant dans DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+
 async function fetchJSON(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -504,10 +537,7 @@ document.getElementById('filter-classe-main').addEventListener('change', e => {
   document.getElementById('filter-examen').disabled = true;
   document.getElementById('filter-semestre').disabled = true;
   ['filter-matiere','filter-examen','filter-semestre'].forEach(id => document.getElementById(id).value = '');
-  
-  // 👇 Ajout ici : charger le résumé de la classe
   loadResumeClasse(e.target.value);
-  
   document.getElementById('notes-detail-section').style.display = 'none';
 });
 
@@ -649,7 +679,6 @@ async function loadNotesForClassAndMatiere() {
       })
       .sort((a, b) => b.avg - a.avg);
 
-    // 1. Aplatir toutes les notes dans un seul tableau
     const allNotes = [];
     Object.entries(notesByEleve).forEach(([name, notes]) => {
       notes.forEach(note => {
@@ -662,13 +691,11 @@ async function loadNotesForClassAndMatiere() {
       });
     });
 
-    // 2. Trier par note (décroissant), puis par nom
     allNotes.sort((a, b) => {
       if (b.note !== a.note) return b.note - a.note;
       return a.Username.localeCompare(b.Username);
     });
 
-    // 3. Générer le tableau avec emoji à côté des NOTES
     tbody.innerHTML = '';
     allNotes.forEach(note => {
       const noteEmoji = note.note >= 15 ? '🟢' : (note.note >= 10 ? '🟡' : '🔴');
@@ -687,7 +714,6 @@ async function loadNotesForClassAndMatiere() {
     document.getElementById('detail-title').textContent = `${classeNom} — ${matiereNom}`;
     noteCountEl.textContent = `${res.length} note${res.length > 1 ? 's' : ''}`;
 
-    // Graphique par élève (sans emoji dans les labels)
     const labels = elevesSorted.map(e => e.name);
     const data = elevesSorted.map(e => parseFloat(e.avg.toFixed(2)));
 
@@ -750,9 +776,8 @@ async function loadNotesForClassAndMatiere() {
       }
     });
 
-    // ✅ Charger la progression
     loadProgressionChart(classeId, matiereId);
-    loadDistributionChart(classeId, matiereId, examenId, semestreId); // ✅ avec filtres
+    loadDistributionChart(classeId, matiereId, examenId, semestreId);
     document.getElementById('notes-detail-section').style.display = 'block';
 
   } catch (err) {
@@ -812,18 +837,13 @@ async function loadMatiereChart(){
   try {
     const res = await fetchJSON('api.php?action=matiere_counts');
     
-    const enrichedLabels = res.labels.map((label, i) => {
-      const avg = res.data[i];
-      let emoji = avg >= 15 ? '🟢' : (avg >= 10 ? '🟡' : '🔴');
-      return `${emoji} ${label}`;
-    });
-
     const ctx = document.getElementById('matiereChart').getContext('2d');
     if(matiereChart) matiereChart.destroy();
+    
     matiereChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: enrichedLabels,
+        labels: res.labels,
         datasets: [{
           label: 'Moyenne',
           data: res.data,
@@ -841,8 +861,16 @@ async function loadMatiereChart(){
             callbacks: {
               label: function(context) {
                 const avg = context.parsed.y;
+                const idx = context.dataIndex;
+                const s = res.stats[idx];
                 const emoji = avg >= 15 ? '🟢' : (avg >= 10 ? '🟡' : '🔴');
-                return `Moyenne : ${avg}/20 ${emoji}`;
+                
+                return [
+                  `Moyenne : ${avg}/20 ${emoji}`,
+                  `Total notes : ${s.total}`,
+                  `≥15 : ${s.hautes} (${s.pct_hautes}%)`,
+                  `<10 : ${s.basses} (${s.pct_basses}%)`
+                ];
               }
             }
           }
@@ -871,7 +899,7 @@ async function loadElevesTable(){
       const emoji = moyenne >= 15 ? '🟢' : (moyenne >= 10 ? '🟡' : '🔴');
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${u.Username}</td>
+        <td><a href="eleve.php?username=${encodeURIComponent(u.Username)}" target="_blank">${u.Username}</a></td>
         <td>${u.nom_de_classe || '—'}</td>
         <td>${moyenne.toFixed(2)} ${emoji}</td>
       `;
@@ -924,6 +952,7 @@ async function loadAlertesPedagogiques() {
       `<tr><td colspan="3" class="text-center text-danger">❌ Erreur</td></tr>`;
   }
 }
+
 async function loadResumeClasse(classeId) {
   const container = document.getElementById('resume-classe');
   const content = document.getElementById('resume-content');
@@ -955,6 +984,7 @@ async function loadResumeClasse(classeId) {
     container.style.display = 'none';
   }
 }
+
 let distributionChart = null;
 async function loadDistributionChart(classeId, matiereId, examenId = null, semestreId = null) {
   const container = document.getElementById('distribution-chart-container');
@@ -1032,6 +1062,83 @@ async function loadDistributionChart(classeId, matiereId, examenId = null, semes
   }
 }
 
+let comparisonChart = null;
+async function loadComparisonChart() {
+  const canvas = document.getElementById('comparison-chart');
+  if (!canvas) {
+    console.warn('Canvas #comparison-chart non trouvé. Action ignorée.');
+    return;
+  }
+
+  const c1 = document.getElementById('compare-classe1')?.value;
+  const c2 = document.getElementById('compare-classe2')?.value;
+  const container = document.getElementById('comparison-chart-container');
+
+  if (!c1 || !c2) {
+    if (container) container.innerHTML = '<div class="text-center text-muted mt-3">Sélectionnez deux classes</div>';
+    return;
+  }
+
+  try {
+    const res = await fetchJSON(`api.php?action=comparaison_classes&classe1=${c1}&classe2=${c2}`);
+    if (res.error) throw new Error(res.error);
+
+    const ctx = canvas.getContext('2d');
+    if (comparisonChart) comparisonChart.destroy();
+
+    comparisonChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: res.labels,
+        datasets: [
+          {
+            label: res.classe1.nom,
+            data: res.classe1.data,
+            backgroundColor: 'rgba(14,119,112,0.8)',
+            borderColor: 'rgba(14,119,112,1)',
+            borderWidth: 1
+          },
+          {
+            label: res.classe2.nom,
+            data: res.classe2.data,
+            backgroundColor: 'rgba(255,159,64,0.8)',
+            borderColor: 'rgba(255,159,64,1)',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 20,
+            ticks: { stepSize: 2 }
+          }
+        },
+        plugins: {
+          legend: { position: 'top' }
+        }
+      }
+    });
+
+  } catch (err) {
+    if (container) {
+      container.innerHTML = `<div class="text-center text-danger mt-3">❌ ${err.message || 'Erreur'}</div>`;
+    }
+    console.error('Erreur comparaison:', err);
+  }
+}
+
+// Écouter les changements
+document.getElementById('compare-classe1').addEventListener('change', loadComparisonChart);
+document.getElementById('compare-classe2').addEventListener('change', loadComparisonChart);
+
+// ✅ Réinitialiser pour éviter le déclenchement automatique
+document.getElementById('compare-classe1').value = '';
+document.getElementById('compare-classe2').value = '';
+
 // Lancement
 loadStats();
 loadClassChart();
@@ -1039,6 +1146,8 @@ loadMatiereChart();
 loadElevesTable();
 loadLastItems();
 loadAlertesPedagogiques();
+
+});
 </script>
 </body>
 </html>
