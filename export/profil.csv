@@ -1,0 +1,8 @@
+ID;Photo;Prénom;Nom;Email;Date_de_naissance;Année_scolaire;Classe
+1;;user1 first name;user1 last name;mehdi07zouine@gmail.com;0000-00-00;0000-00-00;3
+2;assets/img/bg.jpg;user2 first name;user2 last name;user2email@gmail.com;0000-00-00;0000-00-00;1
+3;assets/img/alwah out.jpg;user3 first name;user3 last name;user3email@gmail.com;0000-00-00;0000-00-00;2
+5;uploads/default.png;User5;Doe;;0000-00-00;0000-00-00;6
+8;uploads/default.png;"user6&amp;#039;s first name";"user6&amp;#039;s last name";user6@gmail.com;0000-00-00;0000-00-00;5
+11;uploads/68cdef42d4cad_68cdeacf65c45_68c48b44e4d1c_utilisateur.png;user7 first name;user 7 last name;user7@gmail.com;0000-00-00;0000-00-00;4
+14;uploads/default.png;mehdi;zouine;;0000-00-00;0000-00-00;6

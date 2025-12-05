@@ -103,7 +103,49 @@ $tables = $conn->query("SHOW TABLES")->fetch_all(MYSQLI_NUM);
     <meta charset="UTF-8">
     <link rel="icon" href="assets/img/alwah logo.png">
     <title>Gestion des Tables - Export & Suppression</title>
-    <style>
+</head>
+<body>
+    <div class="export-container">
+        <h2>📋 Gestion des Tables de la Base</h2>
+
+        <?php if($message): ?>
+            <div class="alert">
+                <?= htmlspecialchars($message) ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="card">
+            <form method="POST">
+                 <?= csrf_field() ?>
+                <label for="table">Choisir la table à traiter :</label>
+                <select name="table" id="table" required>
+                    <option value="">-- Sélectionner une table --</option>
+                    <?php
+                    foreach ($tables as $t) {
+                        echo '<option value="'.htmlspecialchars($t[0]).'">'.htmlspecialchars($t[0]).'</option>';
+                    }
+                    ?>
+                </select>
+
+                <div class="radio-group">
+                    <label for="export">
+                        <input type="radio" name="action" value="export" id="export" required>
+                        Exporter la table en CSV
+                    </label>
+
+                    <label for="delete">
+                        <input type="radio" name="action" value="delete" id="delete">
+                        Supprimer définitivement la table
+                    </label>
+                </div>
+
+                <button type="submit">✨ Valider l'action</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
+<style>
 /* Enhanced Table Management System CSS - Teal Theme */
 
 /* Advanced CSS Variables for Teal Design System */
@@ -744,46 +786,4 @@ select:focus, input[type="radio"]:focus, button:focus {
         border: 1px solid #ccc !important;
     }
 }
-    </style>
-</head>
-<body>
-    <div class="export-container">
-        <h2>📋 Gestion des Tables de la Base</h2>
-
-        <?php if($message): ?>
-            <div class="alert">
-                <?= htmlspecialchars($message) ?>
-            </div>
-        <?php endif; ?>
-
-        <div class="card">
-            <form method="POST">
-                 <?= csrf_field() ?>
-                <label for="table">Choisir la table à traiter :</label>
-                <select name="table" id="table" required>
-                    <option value="">-- Sélectionner une table --</option>
-                    <?php
-                    foreach ($tables as $t) {
-                        echo '<option value="'.htmlspecialchars($t[0]).'">'.htmlspecialchars($t[0]).'</option>';
-                    }
-                    ?>
-                </select>
-
-                <div class="radio-group">
-                    <label for="export">
-                        <input type="radio" name="action" value="export" id="export" required>
-                        Exporter la table en CSV
-                    </label>
-
-                    <label for="delete">
-                        <input type="radio" name="action" value="delete" id="delete">
-                        Supprimer définitivement la table
-                    </label>
-                </div>
-
-                <button type="submit">✨ Valider l'action</button>
-            </form>
-        </div>
-    </div>
-</body>
-</html>
+ </style>

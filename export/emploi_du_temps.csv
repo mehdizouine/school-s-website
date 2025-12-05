@@ -1,0 +1,3 @@
+id;classe_id;matiere_id;jour;heure_debut;heure_fin;prof_id
+2;2;4;Mercredi;10:30:00;12:30:00;
+4;3;7;Mercredi;12:45:00;16:45:00;

@@ -1,0 +1,30 @@
+Table: classes
+CSV headers: ID,nom_de_classe,,,,,,
+Table columns: ID,nom_de_classe
+Valid columns detected: ID,nom_de_classe
+
+Table: matiere
+CSV headers: ID_matiere,matiere,,,,,,
+Table columns: ID_matiere,matiere
+Valid columns detected: ID_matiere,matiere
+
+Table: examen
+CSV headers: ID_examen,nom_examen,semestre,ID_matiere,,,,
+Table columns: ID_examen,nom_examen,semestre,ID_matiere
+Valid columns detected: ID_examen,nom_examen,semestre,ID_matiere
+
+Table: semestre
+CSV headers: ID_semestre,nom_semestre,,,,,,
+Table columns: ID_semestre,nom_semestre
+Valid columns detected: ID_semestre,nom_semestre
+
+Table: login
+CSV headers: Username,Password,ID,role,classe_id,Password_hash,,
+Table columns: Username,Password,ID,role,classe_id,Password_hash,must_reset
+Valid columns detected: Username,Password,ID,role,classe_id,Password_hash
+
+Table: profil
+CSV headers: ID,Photo,Prénom,Nom,Email,Date_de_naissance,Année_scolaire,Classe
+Table columns: ID,Photo,PrÃ©nom,Nom,Email,Date_de_naissance,AnnÃ©e_scolaire,Classe
+Valid columns detected: ID,Photo,Nom,Email,Date_de_naissance,Classe
+

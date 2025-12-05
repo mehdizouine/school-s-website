@@ -7,124 +7,219 @@ require_login();
 validate_csrf();
 require_role('admin');
 
-$message = '';
-
-if (isset($_POST['table']) && isset($_FILES['csv_file'])) {
-
-    $table = preg_replace('/[^a-zA-Z0-9_]/', '', $_POST['table']);
-
-    // Vérifier si la table existe
+function processTableImport($table, $csvLines, $conn) {
+    $table = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
     $result = $conn->query("SHOW TABLES LIKE '$table'");
     if ($result->num_rows == 0) {
-        $message = "Table inexistante !";
-    } else {
+        return "⚠️ Table '$table' inexistante.";
+    }
 
-        $file = $_FILES['csv_file']['tmp_name'];
+    $tmpFile = tempnam(sys_get_temp_dir(), 'import_');
+    file_put_contents($tmpFile, implode("\n", $csvLines));
 
-        if (($handle = fopen($file, "r")) !== FALSE) {
+    // Détecter le séparateur
+    $firstLine = $csvLines[0] ?? '';
+    $delimiter = ',';
+    if (strpos($firstLine, ';') !== false) $delimiter = ';';
+    elseif (strpos($firstLine, "\t") !== false) $delimiter = "\t";
 
-            // ---- Sauvegarde automatique ----
-            $backupTable = $table . '_backup_' . date('Ymd_His');
-            $conn->query("CREATE TABLE `$backupTable` AS SELECT * FROM `$table`");
+    if (($handle = fopen($tmpFile, "r")) !== FALSE) {
+        $headers = fgetcsv($handle, 0, $delimiter);
+        if (!$headers) {
+            fclose($handle); unlink($tmpFile);
+            return "⚠️ Table '$table' : fichier vide.";
+        }
 
-            // Lire entête CSV
-            $headers = fgetcsv($handle, 1000, ';');
+        // Nettoyer BOM
+        if (substr($headers[0], 0, 3) === "\xEF\xBB\xBF") {
+            $headers[0] = substr($headers[0], 3);
+        }
 
-            // Corriger BOM UTF-8
-            if (substr($headers[0], 0, 3) === "\xEF\xBB\xBF") {
-                $headers[0] = substr($headers[0], 3);
-            }
+        $headers = array_map('trim', $headers);
 
-            // Obtenir colonnes réelles de la table
-            $resCols = $conn->query("SELECT * FROM `$table` LIMIT 1");
-            $tableCols = [];
-            foreach ($resCols->fetch_fields() as $col) {
-                $tableCols[] = $col->name;
-            }
+        $resCols = $conn->query("SELECT * FROM `$table` LIMIT 1");
+        $tableCols = [];
+        foreach ($resCols->fetch_fields() as $col) $tableCols[] = $col->name;
 
-            // Colonnes valides
-            $validCols = array_intersect($headers, $tableCols);
+        $headerIndex = [];
+        foreach ($headers as $idx => $h) $headerIndex[$h] = $idx;
 
-            if (empty($validCols)) {
-                $message = "Aucune colonne valide trouvée.";
-            } else {
+        $validCols = array_values(array_intersect($headers, $tableCols));
+        if (empty($validCols)) {
+            fclose($handle); unlink($tmpFile);
+            return "⚠️ Table '$table' : colonnes non correspondantes.";
+        }
 
-                $rowCount = 0;
+        // Définir les colonnes uniques pour éviter les duplications
+        $uniqueColsMap = [
+            'login' => ['ID'],
+            'classes' => ['ID'],
+            'matiere' => ['ID_matiere'],
+            'examen' => ['ID_examen'],
+            'semestre' => ['ID_semestre'],
+            'profil' => ['ID'],
+            'login_attempts' => ['id'],
+            'prof_classes' => ['id'],
+            'note' => ['ID_note'],
+            'devoirs' => ['id'],
+            'emploi_du_temps' => ['id'],
+            'news' => ['ID'],
+            'message_us' => [] // pas de colonne unique
+        ];
 
-                while (($data = fgetcsv($handle, 1000, ';')) !== FALSE) {
+        $uniqueCols = $uniqueColsMap[strtolower($table)] ?? [];
 
-                    $rowData = [];
-                    foreach ($validCols as $i => $colName) {
-                        if (!isset($data[$i])) continue;
+        $rowCount = 0;
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== FALSE) {
+            $rowData = [];
+            $skipLine = false;
 
-                        $value = $conn->real_escape_string($data[$i]);
+            foreach ($validCols as $colName) {
+                $i = $headerIndex[$colName] ?? null;
+                $value = ($i !== null && isset($data[$i])) ? trim($data[$i]) : '';
 
-                        // On laisse le mot de passe tel quel, pas de hash
+                if ($value === '' || strtolower($value) === 'null') {
+                    $colInfoRes = $conn->query("SHOW COLUMNS FROM `$table` LIKE '{$colName}'");
+                    $colInfo = $colInfoRes ? $colInfoRes->fetch_assoc() : null;
+                    $isNotNull = ($colInfo && isset($colInfo['Null']) && $colInfo['Null'] === 'NO');
 
-                        // classe_id vide → NULL
-                        if ($colName === 'classe_id' && ($value === '' || strtolower($value) === 'null')) {
-                            $rowData[$colName] = "NULL";
-                        } else {
-                            $rowData[$colName] = "'$value'";
-                        }
-                    }
-
-                    if (!empty($rowData)) {
-
-                        // On suppose que "ID" est la clé primaire
-                        $idColumn = "ID";
-
-                        if (in_array($idColumn, $validCols)) {
-                            $idValue = $data[array_search($idColumn, $headers)];
-                            $idValue = $conn->real_escape_string($idValue);
-
-                            // Vérifier si la ligne existe déjà
-                            $check = $conn->query("SELECT $idColumn FROM `$table` WHERE $idColumn = '$idValue'");
-
-                            if ($check->num_rows > 0) {
-                                // ---- UPDATE ----
-                                $updates = [];
-                                foreach ($rowData as $col => $val) {
-                                    $updates[] = "`$col` = $val";
-                                }
-                                $updateSQL = "UPDATE `$table` SET " . implode(',', $updates) . " WHERE `$idColumn` = '$idValue'";
-                                $conn->query($updateSQL);
-                            } else {
-                                // ---- INSERT ----
-                                $columns = '`' . implode('`,`', array_keys($rowData)) . '`';
-                                $values = implode(",", array_values($rowData));
-                                $insertSQL = "INSERT INTO `$table` ($columns) VALUES ($values)";
-                                $conn->query($insertSQL);
-                            }
-                        }
-
-                        $rowCount++;
+                    if ($isNotNull) {
+                        if ($colName === 'nom_de_classe') $value = 'INCONNU';
+                        elseif (in_array($colName, ['Classe', 'classe_id'])) $value = '1';
+                        else $skipLine = true;
+                    } else {
+                        $value = null;
                     }
                 }
 
-                $message = "$rowCount lignes traitées (insert/update).<br>Sauvegarde : $backupTable";
+                if ($skipLine) break;
+
+                $rowData[$colName] = ($value === null) ? null : $value;
+            }
+            if ($skipLine || empty($rowData)) continue;
+
+            // Bloc spécifique pour login : générer password_hash si vide
+            if (strtolower($table) === 'login') {
+                $colPasswordHash = array_key_exists('Password_hash', $rowData) ? 'Password_hash' : null;
+                $colPassword = array_key_exists('Password', $rowData) ? 'Password' : null;
+
+                if ($colPasswordHash !== null && (!isset($rowData[$colPasswordHash]) || $rowData[$colPasswordHash] === '')) {
+                    $plain = ($colPassword !== null && isset($rowData[$colPassword]) && $rowData[$colPassword] !== '') ? $rowData[$colPassword] : '123456';
+                    $rowData[$colPasswordHash] = password_hash($plain, PASSWORD_DEFAULT);
+                }
+
+                // Supprimer password en clair
+                if ($colPassword !== null) unset($rowData[$colPassword]);
             }
 
-            fclose($handle);
+            // Vérifier si la ligne existe déjà
+            $exists = false;
+            if (!empty($uniqueCols)) {
+                $whereParts = [];
+                foreach ($uniqueCols as $col) {
+                    if (!isset($rowData[$col])) continue 2; // ignore si la colonne unique n'est pas fournie
+                    $val = $conn->real_escape_string($rowData[$col]);
+                    $whereParts[] = "`$col` = '$val'";
+                }
+                if (!empty($whereParts)) {
+                    $whereSql = implode(' AND ', $whereParts);
+                    $res = $conn->query("SELECT 1 FROM `$table` WHERE $whereSql LIMIT 1");
+                    if ($res && $res->num_rows > 0) $exists = true;
+                }
+            }
+            if ($exists) continue; // ignorer la ligne si elle existe déjà
 
-        } else {
-            $message = "Impossible de lire le fichier CSV.";
+            // Insérer
+            $cols = array_keys($rowData);
+            $vals = array_map(function($v) use($conn){ return ($v===null) ? 'NULL' : "'".$conn->real_escape_string($v)."'"; }, array_values($rowData));
+            $sql = "INSERT INTO `$table` (`".implode('`,`',$cols)."`) VALUES (".implode(',', $vals).")";
+            $conn->query($sql);
+
+            $rowCount++;
+        }
+
+        fclose($handle);
+        unlink($tmpFile);
+        return "✅ '$table' : $rowCount lignes traitées.";
+    }
+
+    return "❌ '$table' : erreur lecture.";
+}
+
+$message = '';
+
+if (isset($_FILES['csv_file'])) {
+    $file = $_FILES['csv_file']['tmp_name'];
+    if (!is_file($file) || !is_readable($file)) {
+        $message = "Fichier CSV invalide.";
+    } else {
+        $lines = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if (!$lines) $message = "Fichier vide.";
+        else {
+            $ordreTables = [
+                'classes','matiere','examen','semestre','login','profil',
+                'login_attempts','prof_classes','note','devoirs','emploi_du_temps',
+                'news','message_us'
+            ];
+
+            $tablesData = [];
+            $currentTable = null;
+            foreach ($lines as $line) {
+                $trimmed = trim($line);
+                if (strpos($trimmed, '### TABLE:') === 0) {
+                    $currentTable = trim(substr($trimmed, 11));
+                    $tablesData[$currentTable] = [];
+                } elseif ($currentTable !== null) {
+                    $tablesData[$currentTable][] = $line;
+                }
+            }
+
+            $allMessages = [];
+            foreach ($ordreTables as $table) {
+                if (isset($tablesData[$table]) && !empty($tablesData[$table])) {
+                    $allMessages[] = processTableImport($table, $tablesData[$table], $conn);
+                }
+            }
+
+            foreach ($tablesData as $table => $data) {
+                if (!in_array($table, $ordreTables)) {
+                    $allMessages[] = processTableImport($table, $data, $conn);
+                }
+            }
+
+            $message = implode('<br>', $allMessages);
         }
     }
 }
-
-// Récupération des tables
-$tables = $conn->query("SHOW TABLES")->fetch_all(MYSQLI_NUM);
 ?>
-
 
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <link rel="icon" href="assets/img/alwah logo.png">
-    <title>Importer CSV dans une table</title>
-    <style>
+    <title>Importer CSV multi-table</title>
+</head>
+<body>
+    <form method="POST" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <label for="csv_file" style="display:block; font-weight:bold; margin-bottom:15px; text-align:center; font-size:18px;">
+            Choisir le fichier CSV multi-table :
+        </label>
+        <input type="file" name="csv_file" id="csv_file" accept=".csv" required 
+               style="width:100%; padding:12px; margin-bottom:25px; border:1px solid #ccc; border-radius:8px;">
+        <button type="submit" 
+                style="background:#0E7770; color:white; border:none; padding:12px 30px; 
+                       border-radius:20px; font-weight:bold; cursor:pointer;">
+            ✨ Importer toutes les tables
+        </button>
+    </form>
+    <div style="margin-top:20px; text-align:center; font-weight:bold; color:green;">
+        <?= $message ?>
+    </div>
+</body>
+</html>
+<style>
 /* === COPIE DU CSS DE export.txt === */
 /* Advanced CSS Variables for Teal Design System */
 :root {
@@ -451,34 +546,3 @@ select:focus, input[type="file"]:focus, button:focus {
     }
 }
     </style>
-</head>
-<body>
-    <div class="import-container">
-        <h2>📥 Importer un CSV dans une table</h2>
-        <?php if($message): ?>
-            <div class="alert">
-                <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?>
-            </div>
-        <?php endif; ?>
-        <div class="card">
-            <form method="POST" enctype="multipart/form-data">
-                 <?= csrf_field() ?>
-                <label for="table">Choisir la table :</label>
-                <select name="table" id="table" required>
-                    <option value="">-- Sélectionner une table --</option>
-                    <?php
-                    foreach ($tables as $t) {
-                        echo '<option value="'.htmlspecialchars($t[0], ENT_QUOTES, 'UTF-8').'">'.htmlspecialchars($t[0], ENT_QUOTES, 'UTF-8').'</option>';
-                    }
-                    ?>
-                </select>
-
-                <label for="csv_file">Choisir le fichier CSV :</label>
-                <input type="file" name="csv_file" id="csv_file" accept=".csv" required>
-
-                <button type="submit">✨ Importer le fichier</button>
-            </form>
-        </div>
-    </div>
-</body>
-</html>
