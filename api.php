@@ -2,6 +2,9 @@
 // ==========================
 // CONFIGURATION DE BASE
 // ==========================
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 ini_set('display_errors', 0);
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 header('Content-Type: application/json; charset=utf-8');
@@ -626,43 +629,147 @@ switch($action) {
     }
     echo json_encode($rows);
     exit;
+case 'eleve_statut':
+    header('Content-Type: application/json; charset=utf-8');
 
-  case 'eleve_statut':
     $eleveId = requireInt($_GET['eleve_id'] ?? null);
     if ($eleveId === null) {
-      http_response_code(400);
-      echo json_encode(['error' => 'ID élève requis']);
-      exit;
+        http_response_code(400);
+        echo json_encode(['error' => 'ID élève requis']);
+        exit;
     }
 
-    $stmt = $conn->prepare("SELECT AVG(note) as moy FROM note WHERE ID_eleve = ?");
-    $stmt->bind_param("i", $eleveId);
-    $stmt->execute();
-    $moyGen = (float)($stmt->get_result()->fetch_assoc()['moy'] ?? 0);
+    try {
+        // On récupère l'ID de la classe de l'élève
+        $stmt = $conn->prepare("SELECT classe_id FROM login WHERE ID = ?");
+        $stmt->bind_param("i", $eleveId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $classeId = ($res && $row = $res->fetch_assoc()) ? (int)$row['classe_id'] : null;
+        $stmt->close();
 
-    $stmt = $conn->prepare("
-      SELECT 
-        SUM(CASE WHEN avg_moy < 10 THEN 1 ELSE 0 END) as alertes,
-        SUM(CASE WHEN avg_moy >= 15 THEN 1 ELSE 0 END) as excellentes
-      FROM (
-        SELECT AVG(n.note) as avg_moy
-        FROM note n
-        WHERE n.ID_eleve = ?
-        GROUP BY n.ID_matiere
-      ) sub
-    ");
-    $stmt->bind_param("i", $eleveId);
-    $stmt->execute();
-    $counts = $stmt->get_result()->fetch_assoc();
-    $alertes = (int)($counts['alertes'] ?? 0);
-    $excellentes = (int)($counts['excellentes'] ?? 0);
+        if ($classeId === null) {
+            echo json_encode(['error'=>'Élève ou classe introuvable']);
+            exit;
+        }
 
-    echo json_encode([
-      'moyenne_generale' => $moyGen,
-      'nb_alertes' => $alertes,
-      'nb_excellentes' => $excellentes
-    ]);
+        // Moyenne générale
+        $stmt = $conn->prepare("SELECT AVG(note) AS moy FROM note WHERE ID_eleve = ?");
+        $stmt->bind_param("i", $eleveId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $moyGen = $res ? (float)($res->fetch_assoc()['moy'] ?? 0) : 0;
+        $stmt->close();
+
+        // Alertes (<10) et excellentes (>=15) par matière
+        $stmt = $conn->prepare("
+            SELECT 
+                SUM(CASE WHEN avg_moy < 10 THEN 1 ELSE 0 END) AS alertes,
+                SUM(CASE WHEN avg_moy >= 15 THEN 1 ELSE 0 END) AS excellentes
+            FROM (
+                SELECT AVG(note) AS avg_moy
+                FROM note
+                WHERE ID_eleve = ?
+                GROUP BY ID_matiere
+            ) AS sub
+        ");
+        $stmt->bind_param("i", $eleveId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $counts = $res ? $res->fetch_assoc() : ['alertes'=>0,'excellentes'=>0];
+        $alertes = (int)$counts['alertes'];
+        $excellentes = (int)$counts['excellentes'];
+        $stmt->close();
+
+        // Matière la plus forte
+        $stmt = $conn->prepare("
+            SELECT m.matiere, AVG(n.note) AS moyenne
+            FROM note n
+            JOIN matiere m ON n.ID_matiere = m.ID_matiere
+            WHERE n.ID_eleve = ?
+            GROUP BY m.ID_matiere
+            ORDER BY moyenne DESC
+            LIMIT 1
+        ");
+        $stmt->bind_param("i", $eleveId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $top = $res ? $res->fetch_assoc() : null;
+        $matiere_top = $top['matiere'] ?? null;
+        $moyenne_top = isset($top['moyenne']) ? (float)$top['moyenne'] : null;
+        $stmt->close();
+
+        // Matière la plus faible
+        $stmt = $conn->prepare("
+            SELECT m.matiere, AVG(n.note) AS moyenne
+            FROM note n
+            JOIN matiere m ON n.ID_matiere = m.ID_matiere
+            WHERE n.ID_eleve = ?
+            GROUP BY m.ID_matiere
+            ORDER BY moyenne ASC
+            LIMIT 1
+        ");
+        $stmt->bind_param("i", $eleveId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $low = $res ? $res->fetch_assoc() : null;
+        $matiere_faible = $low['matiere'] ?? null;
+        $moyenne_faible = isset($low['moyenne']) ? (float)$low['moyenne'] : null;
+        $stmt->close();
+
+        // Classement dans la classe
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) + 1 AS classement
+            FROM login l
+            WHERE l.classe_id = ? AND l.role='eleve' 
+            AND (SELECT AVG(n.note) FROM note n WHERE n.ID_eleve = l.ID) > ?
+        ");
+        $stmt->bind_param("id", $classeId, $moyGen);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $classement = ($res && $row = $res->fetch_assoc()) ? (int)$row['classement'] : 1;
+        $stmt->close();
+
+        // Total élèves dans la classe
+        $stmt = $conn->prepare("SELECT COUNT(*) AS total_eleves FROM login WHERE role='eleve' AND classe_id = ?");
+        $stmt->bind_param("i", $classeId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $total_eleves = ($res && $row = $res->fetch_assoc()) ? (int)$row['total_eleves'] : 0;
+        $stmt->close();
+
+        // Devoirs dans la classe (pas de colonne 'rendu')
+        $stmt = $conn->prepare("SELECT COUNT(*) AS nb_devoirs FROM devoirs WHERE classe_id = ?");
+        $stmt->bind_param("i", $classeId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $devoirs = $res ? $res->fetch_assoc() : ['nb_devoirs'=>0];
+        $stmt->close();
+        $nb_devoirs_rendus = (int)$devoirs['nb_devoirs'];
+        $nb_devoirs_non_rendus = 0; // on ne peut pas savoir sans colonne 'rendu'
+
+        echo json_encode([
+            'moyenne_generale' => $moyGen,
+            'nb_alertes' => $alertes,
+            'nb_excellentes' => $excellentes,
+            'matiere_top' => $matiere_top,
+            'moyenne_top' => $moyenne_top,
+            'matiere_faible' => $matiere_faible,
+            'moyenne_faible' => $moyenne_faible,
+            'classement' => $classement,
+            'total_eleves' => $total_eleves,
+            'nb_devoirs_rendus' => $nb_devoirs_rendus,
+            'nb_devoirs_non_rendus' => $nb_devoirs_non_rendus
+        ]);
+
+    } catch (\Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error'=>'Erreur serveur','message'=>$e->getMessage()]);
+    }
     exit;
+
+
+
 
   case 'eleve_evolution_matiere':
     $eleveId = requireInt($_GET['eleve_id'] ?? null);

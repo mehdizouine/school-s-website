@@ -774,74 +774,71 @@ async function loadDistributionChart(classeId, matiereId, examenId = null, semes
 let comparisonChart = null;
 
 async function loadComparisonChart() {
-  const c1 = document.getElementById('compare-classe1')?.value;
-  const c2 = document.getElementById('compare-classe2')?.value;
-  if (!c1 || !c2) return;
+    const c1 = document.getElementById('compare-classe1').value;
+    const c2 = document.getElementById('compare-classe2').value;
+    if (!c1 || !c2) return;
 
-  const canvas = document.getElementById('comparison-chart');
-  if (!canvas) {
-    console.warn('Canvas #comparison-chart absent du DOM');
-    return;
-  }
-
-  try {
-    const res = await fetchJSON(`api.php?action=comparaison_classes&classe1=${c1}&classe2=${c2}`);
-    if (res.error) throw new Error(res.error);
-
-    if (comparisonChart) comparisonChart.destroy();
-
-    const barWidth = 90;
-    const chartWidth = Math.max(res.labels.length * barWidth, 500);
-    canvas.width = chartWidth;
-    canvas.height = 250;
-
-    const ctx = canvas.getContext('2d');
-    comparisonChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: res.labels,
-        datasets: [
-          {
-            label: res.classe1.nom,
-            data: res.classe1.data,
-            backgroundColor: 'rgba(14,119,112,0.8)',
-            borderColor: 'rgba(14,119,112,1)',
-            borderWidth: 1
-          },
-          {
-            label: res.classe2.nom,
-            data: res.classe2.data,
-            backgroundColor: 'rgba(255,159,64,0.8)',
-            borderColor: 'rgba(255,159,64,1)',
-            borderWidth: 1
-          }
-        ]
-      },
-      options: {
-        responsive: false,
-        maintainAspectRatio: false,
-        scales: {
-          y: { beginAtZero: true, max: 20, ticks: { stepSize: 2 } },
-          x: {
-            ticks: { autoSkip: false, maxRotation: 0, minRotation: 0 }
-          }
-        },
-        plugins: { legend: { position: 'top' } }
-      }
-    });
-
-    // ✅ Plus besoin de gérer `container.style.display`
-
-  } catch (err) {
-    console.error('Erreur comparaison:', err);
-    // Optionnel : afficher une erreur dans le scrollable
+    const canvas = document.getElementById('comparison-chart');
     const parent = canvas.closest('.chart-container-scrollable');
-    if (parent) {
-      parent.innerHTML = `<div class="text-center text-danger py-3">❌ ${err.message || 'Erreur'}</div>`;
-    }
-  }
-}
+    if (!canvas || !parent) return;
 
+    try {
+        const res = await fetch(`api.php?action=comparaison_classes&classe1=${c1}&classe2=${c2}`)
+            .then(r => r.json());
+        if (res.error) throw new Error(res.error);
+
+        // Préparer les données comme des nombres purs
+        const data1 = (res.classe1.data || []).map(d => typeof d === 'number' ? d : parseFloat(d.moyenne) || 0);
+        const data2 = (res.classe2.data || []).map(d => typeof d === 'number' ? d : parseFloat(d.moyenne) || 0);
+
+        const labels = res.labels;
+
+        // Détruire l'ancien graphique si existant
+        if (comparisonChart) comparisonChart.destroy();
+
+        // Reset du canvas
+        canvas.style.width = Math.max(labels.length * 80, 500) + 'px';
+        canvas.style.height = '250px';
+
+        const ctx = canvas.getContext('2d');
+
+        // Créer un graphique vide au départ
+        comparisonChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: res.classe1.nom, data: data1.map(_ => 0), backgroundColor: 'rgba(14,119,112,0.8)' },
+                    { label: res.classe2.nom, data: data2.map(_ => 0), backgroundColor: 'rgba(255,159,64,0.8)' }
+                ]
+            },
+            options: {
+                responsive: false,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    y: { beginAtZero: true, max: 20, ticks: { stepSize: 2 } }
+                }
+            }
+        });
+
+        // Animation progressive type "count up"
+        let progress = 0;
+        const steps = 60; // nombre d'itérations pour l'animation
+        const interval = setInterval(() => {
+            progress++;
+            comparisonChart.data.datasets[0].data = data1.map(v => (v / steps) * progress);
+            comparisonChart.data.datasets[1].data = data2.map(v => (v / steps) * progress);
+            comparisonChart.update();
+
+            if (progress >= steps) clearInterval(interval);
+        }, 15); // 20ms par frame → animation ~1.2s
+
+    } catch (err) {
+        console.error('Erreur comparaison:', err);
+        parent.innerHTML = `<div class="text-center text-danger py-3">❌ ${err.message || 'Erreur'}</div>`;
+    }
+}
 // Écouter les changements
 document.getElementById('compare-classe1').addEventListener('change', loadComparisonChart);
 document.getElementById('compare-classe2').addEventListener('change', loadComparisonChart);
@@ -887,6 +884,52 @@ function loadExams(subjectId) {
         .catch(err => console.error("Erreur getExams:", err));
 }
 // Écouter les changements (seulement)
+function animateStat(id, value) {
+    const el = document.getElementById(id);
+    el.classList.remove('loaded');
+
+    // S'assurer que value est bien un nombre
+    const target = Number(value) || 0;
+    el.textContent = '0';
+    let current = 0;
+
+    // Décalage dynamique pour les petits nombres
+    const steps = 100;
+    const step = Math.max(1, Math.floor(target / steps));
+    const interval = setInterval(() => {
+        current += step;
+        if (current >= target) {
+            el.textContent = target.toLocaleString('fr-FR'); // compatibilité locale FR
+            el.classList.add('loaded');
+            clearInterval(interval);
+        } else {
+            el.textContent = current.toLocaleString('fr-FR');
+        }
+    }, 25);
+}
+
+// Exemple d'utilisation dans loadStats()
+async function loadStats(){
+    try {
+        ['users-count','classes-count','notes-count','devoirs-count'].forEach(id => {
+            document.getElementById(id).classList.add('loading');
+        });
+
+        const s = await fetchJSON('api.php?action=stats');
+
+        animateStat('users-count', s.users);
+        animateStat('classes-count', s.classes);
+        animateStat('notes-count', s.notes);
+        animateStat('devoirs-count', s.devoirs);
+
+    } catch(e) { 
+        console.error(e);
+        ['users-count','classes-count','notes-count','devoirs-count'].forEach(id => {
+            document.getElementById(id).classList.remove('loading');
+        });
+    }
+}
+
 
 // Lancement
 loadStats();

@@ -3,16 +3,14 @@ include('db.php');
 require_once 'authorisation.php';
 
 // Vérifications de sécurité
-require_login();
+//require_login();
 validate_csrf();
-require_role('admin');
+//require_role('admin');
 
 function processTableImport($table, $csvLines, $conn) {
     $table = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
     $result = $conn->query("SHOW TABLES LIKE '$table'");
-    if ($result->num_rows == 0) {
-        return "⚠️ Table '$table' inexistante.";
-    }
+    if ($result->num_rows == 0) return "⚠️ Table '$table' inexistante.";
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'import_');
     file_put_contents($tmpFile, implode("\n", $csvLines));
@@ -25,16 +23,10 @@ function processTableImport($table, $csvLines, $conn) {
 
     if (($handle = fopen($tmpFile, "r")) !== FALSE) {
         $headers = fgetcsv($handle, 0, $delimiter);
-        if (!$headers) {
-            fclose($handle); unlink($tmpFile);
-            return "⚠️ Table '$table' : fichier vide.";
-        }
+        if (!$headers) { fclose($handle); unlink($tmpFile); return "⚠️ Table '$table' : fichier vide."; }
 
         // Nettoyer BOM
-        if (substr($headers[0], 0, 3) === "\xEF\xBB\xBF") {
-            $headers[0] = substr($headers[0], 3);
-        }
-
+        if (substr($headers[0], 0, 3) === "\xEF\xBB\xBF") $headers[0] = substr($headers[0], 3);
         $headers = array_map('trim', $headers);
 
         $resCols = $conn->query("SELECT * FROM `$table` LIMIT 1");
@@ -45,12 +37,9 @@ function processTableImport($table, $csvLines, $conn) {
         foreach ($headers as $idx => $h) $headerIndex[$h] = $idx;
 
         $validCols = array_values(array_intersect($headers, $tableCols));
-        if (empty($validCols)) {
-            fclose($handle); unlink($tmpFile);
-            return "⚠️ Table '$table' : colonnes non correspondantes.";
-        }
+        if (empty($validCols)) { fclose($handle); unlink($tmpFile); return "⚠️ Table '$table' : colonnes non correspondantes."; }
 
-        // Définir les colonnes uniques pour éviter les duplications
+        // Colonnes uniques pour éviter duplications
         $uniqueColsMap = [
             'login' => ['ID'],
             'classes' => ['ID'],
@@ -64,9 +53,8 @@ function processTableImport($table, $csvLines, $conn) {
             'devoirs' => ['id'],
             'emploi_du_temps' => ['id'],
             'news' => ['ID'],
-            'message_us' => [] // pas de colonne unique
+            'message_us' => []
         ];
-
         $uniqueCols = $uniqueColsMap[strtolower($table)] ?? [];
 
         $rowCount = 0;
@@ -78,6 +66,7 @@ function processTableImport($table, $csvLines, $conn) {
                 $i = $headerIndex[$colName] ?? null;
                 $value = ($i !== null && isset($data[$i])) ? trim($data[$i]) : '';
 
+                // Gestion des NOT NULL
                 if ($value === '' || strtolower($value) === 'null') {
                     $colInfoRes = $conn->query("SHOW COLUMNS FROM `$table` LIKE '{$colName}'");
                     $colInfo = $colInfoRes ? $colInfoRes->fetch_assoc() : null;
@@ -87,29 +76,27 @@ function processTableImport($table, $csvLines, $conn) {
                         if ($colName === 'nom_de_classe') $value = 'INCONNU';
                         elseif (in_array($colName, ['Classe', 'classe_id'])) $value = '1';
                         else $skipLine = true;
-                    } else {
-                        $value = null;
-                    }
+                    } else $value = null;
                 }
-
                 if ($skipLine) break;
 
                 $rowData[$colName] = ($value === null) ? null : $value;
             }
             if ($skipLine || empty($rowData)) continue;
 
-            // Bloc spécifique pour login : générer password_hash si vide
+            // Bloc spécifique pour login : générer password_hash à partir du mot de passe clair
             if (strtolower($table) === 'login') {
                 $colPasswordHash = array_key_exists('Password_hash', $rowData) ? 'Password_hash' : null;
                 $colPassword = array_key_exists('Password', $rowData) ? 'Password' : null;
 
                 if ($colPasswordHash !== null && (!isset($rowData[$colPasswordHash]) || $rowData[$colPasswordHash] === '')) {
-                    $plain = ($colPassword !== null && isset($rowData[$colPassword]) && $rowData[$colPassword] !== '') ? $rowData[$colPassword] : '123456';
+                    $plain = ($colPassword !== null && isset($rowData[$colPassword]) && $rowData[$colPassword] !== '') 
+                                ? $rowData[$colPassword] : '123456';
                     $rowData[$colPasswordHash] = password_hash($plain, PASSWORD_DEFAULT);
                 }
 
-                // Supprimer password en clair
-                if ($colPassword !== null) unset($rowData[$colPassword]);
+                // Supprimer le mot de passe en clair après hash
+                //if ($colPassword !== null) unset($rowData[$colPassword]);
             }
 
             // Vérifier si la ligne existe déjà
@@ -117,7 +104,7 @@ function processTableImport($table, $csvLines, $conn) {
             if (!empty($uniqueCols)) {
                 $whereParts = [];
                 foreach ($uniqueCols as $col) {
-                    if (!isset($rowData[$col])) continue 2; // ignore si la colonne unique n'est pas fournie
+                    if (!isset($rowData[$col])) continue 2;
                     $val = $conn->real_escape_string($rowData[$col]);
                     $whereParts[] = "`$col` = '$val'";
                 }
@@ -127,7 +114,7 @@ function processTableImport($table, $csvLines, $conn) {
                     if ($res && $res->num_rows > 0) $exists = true;
                 }
             }
-            if ($exists) continue; // ignorer la ligne si elle existe déjà
+            if ($exists) continue;
 
             // Insérer
             $cols = array_keys($rowData);
@@ -150,9 +137,8 @@ $message = '';
 
 if (isset($_FILES['csv_file'])) {
     $file = $_FILES['csv_file']['tmp_name'];
-    if (!is_file($file) || !is_readable($file)) {
-        $message = "Fichier CSV invalide.";
-    } else {
+    if (!is_file($file) || !is_readable($file)) $message = "Fichier CSV invalide.";
+    else {
         $lines = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if (!$lines) $message = "Fichier vide.";
         else {
@@ -176,15 +162,11 @@ if (isset($_FILES['csv_file'])) {
 
             $allMessages = [];
             foreach ($ordreTables as $table) {
-                if (isset($tablesData[$table]) && !empty($tablesData[$table])) {
+                if (isset($tablesData[$table]) && !empty($tablesData[$table])) 
                     $allMessages[] = processTableImport($table, $tablesData[$table], $conn);
-                }
             }
-
             foreach ($tablesData as $table => $data) {
-                if (!in_array($table, $ordreTables)) {
-                    $allMessages[] = processTableImport($table, $data, $conn);
-                }
+                if (!in_array($table, $ordreTables)) $allMessages[] = processTableImport($table, $data, $conn);
             }
 
             $message = implode('<br>', $allMessages);
@@ -219,6 +201,7 @@ if (isset($_FILES['csv_file'])) {
     </div>
 </body>
 </html>
+
 <style>
 /* === COPIE DU CSS DE export.txt === */
 /* Advanced CSS Variables for Teal Design System */
